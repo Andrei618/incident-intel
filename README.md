@@ -11,7 +11,7 @@
 
 ## 🚧 Project Status
 
-**Currently in active development** - Week 1 of 8-week implementation plan.
+**Currently in active development**
 
 **Completed:**
 - ✅ Project initialization and dependency management
@@ -60,7 +60,7 @@ This assistant helps IT operations teams by:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/incident-intel.git
+   git clone https://github.com/Andrei618/incident-intel.git
    cd incident-intel
    ```
 
@@ -124,7 +124,7 @@ incident-intel/
 docker compose up -d
 
 # Run the FastAPI server (when implemented)
-uv run uvicorn src.incident_intel.main:app --reload
+uv run uvicorn incident_intel.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Code Quality
@@ -203,7 +203,7 @@ This is a portfolio project and not currently accepting contributions. However, 
 
 ## 📧 Contact
 
-**Andrei** - [GitHub Profile](https://github.com/YOUR_USERNAME)
+**Andrei** - [GitHub Profile](https://github.com/Andrei618)
 
 ---
 

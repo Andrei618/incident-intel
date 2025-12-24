@@ -43,7 +43,7 @@ dev = [
     # Testing
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
-    "pytest_cov>=7.0.0",
+    "pytest-cov>=7.0.0",
 
     # Code quality
     "ruff>=0.14.10",
@@ -78,9 +78,11 @@ ignore = [
     "E501",   # Line too long (we use 100-char limit, not 79)
     "D203",   # 1 blank line before class docstring (conflicts with D211)
     "D213",   # Multi-line docstring summary on second line (conflicts with D212)
-    "ANN101", # Missing type annotation for self (redundant)
-    "ANN102", # Missing type annotation for cls (redundant)
+    "D104",   # Missing docstring in public package (__init__.py files)
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]  # Allow assert in tests
 
 [tool.ruff]
 line-length = 100 # Match your E501 ignore
