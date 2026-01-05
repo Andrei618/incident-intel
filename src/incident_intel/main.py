@@ -1,8 +1,13 @@
 """App entry point."""
 
-from fastapi import FastAPI
+from dotenv import load_dotenv
 
-from incident_intel.api import health
+# Load environment variables BEFORE importing any local modules that read os.getenv().
+# Python executes module-level code at import time, so we must load .env first.
+load_dotenv()
+
+from fastapi import FastAPI  # noqa: E402, I001 //E402: import not at top, I001: import block is unsorted
+from incident_intel.api import health  # noqa: E402
 
 app: FastAPI = FastAPI(
     title="Incident Intelligence Assistant",
