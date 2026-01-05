@@ -82,7 +82,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101"]  # Allow assert in tests
+"tests/**/*.py" = [
+    "S101",   # Allow assert in tests
+    "ANN001", # Missing type annotation for function argument (for test functions)
+]
 
 [tool.ruff]
 line-length = 100 # Match your E501 ignore
