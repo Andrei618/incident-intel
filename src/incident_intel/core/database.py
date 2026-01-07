@@ -9,6 +9,10 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/incident_intel"
 )
 
+# Convert Railway's postgres:// to postgresql+asyncpg:// for async support
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+
 ECHO_SQL_VALUE = os.getenv("ECHO_SQL", "false").lower()
 ECHO_SQL = {"true": True, "debug": "debug"}.get(ECHO_SQL_VALUE, False)
 
