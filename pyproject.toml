@@ -85,6 +85,10 @@ ignore = [
 "tests/**/*.py" = [
     "S101",   # Allow assert in tests
     "ANN001", # Missing type annotation for function argument (for test functions)
+    "ANN201", # Missing return type annotation
+]
+"scripts/*.py" = [
+    "S101",   # Allow assert in scripts
 ]
 
 [tool.ruff]

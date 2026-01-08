@@ -6,7 +6,7 @@ a reusable TimestampMixin for audit fields.
 
 from datetime import UTC, datetime
 
-from sqlalchemy import MetaData
+from sqlalchemy import DateTime, MetaData
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -36,7 +36,12 @@ class TimestampMixin:
     - updated_at: Set on UPDATE
     """
 
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+    )
     updated_at: Mapped[datetime | None] = mapped_column(
-        default=None, onupdate=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        default=None,
+        onupdate=lambda: datetime.now(UTC),
     )
