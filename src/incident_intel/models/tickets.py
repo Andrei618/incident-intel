@@ -77,6 +77,8 @@ class Ticket(Base, TimestampMixin):
 
     # Relationships (string references to avoid circular imports)
     service: Mapped["Service"] = relationship(
+        lazy="joined",  # Async-compatible: eager load with JOIN
+        innerjoin=True,  # Required FK, use INNER JOIN for efficiency
         back_populates="tickets",
     )
     comments: Mapped[list["TicketComment"]] = relationship(
