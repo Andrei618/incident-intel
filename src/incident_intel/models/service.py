@@ -45,6 +45,6 @@ class Service(Base, TimestampMixin):
     # Relationships
     tickets: Mapped[list["Ticket"]] = relationship(
         back_populates="service",
-        lazy="select",  # Load on demand (default)
+        lazy="selectin",  # Async-compatible eager loading
         cascade="all, delete-orphan",  # ORM-level cascade
     )

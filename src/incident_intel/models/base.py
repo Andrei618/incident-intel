@@ -7,10 +7,11 @@ a reusable TimestampMixin for audit fields.
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, MetaData, func
+from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
-class Base(DeclarativeBase):
+class Base(AsyncAttrs, DeclarativeBase):
     """Base class for all database models.
 
     Configures standardized naming conventions for database constraints,
