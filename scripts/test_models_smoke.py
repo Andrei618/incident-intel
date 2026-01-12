@@ -5,12 +5,13 @@ Run after creating/modifying models to catch syntax errors.
 """
 
 from incident_intel.models.base import Base
+from incident_intel.models.document import DocType, Document, DocumentChunk
 from incident_intel.models.service import Service
 from incident_intel.models.tickets import (
     Ticket,
-    TicketStatus,
-    TicketPriority,
     TicketComment,
+    TicketPriority,
+    TicketStatus,
 )
 
 
@@ -61,14 +62,13 @@ def test_service_model() -> None:
 
     print("✅ Service model: ALL TESTS PASSED\n")
 
+
 def test_ticket_model() -> None:
     """Verify Ticket model is defined correctly."""
     print("Testing Ticket model ...")
 
     # Test 1: Table name
-    assert Ticket.__tablename__ == "tickets", (
-        f"Expected 'tickets'. got '{Ticket.__tablename__}'"
-    )
+    assert Ticket.__tablename__ == "tickets", f"Expected 'tickets'. got '{Ticket.__tablename__}'"
     print("  ✅ Table name: tickets")
 
     # Test 2: Columns exist
@@ -175,6 +175,118 @@ def test_ticket_comment_model() -> None:
 
     print("✅ TicketComment model: ALL TESTS PASSED\n")
 
+
+def test_document_model() -> None:
+    """Verify Document model is defined correctly."""
+    print("Testing Document model ...")
+
+    # Test 1: Table name
+    assert Document.__tablename__ == "documents", (
+        f"Expected 'documents'. got '{Document.__tablename__}'"
+    )
+    print("  ✅ Table name: documents")
+
+    # Test 2: Columns exist
+    columns = {c.name for c in Document.__table__.columns}
+    expected = {
+        "id",
+        "service_id",
+        "title",
+        "content",
+        "doc_type",
+        "created_at",
+        "updated_at",
+    }
+    assert columns == expected, f"Missing columns: {expected - columns}"
+    print(f"  ✅ All {len(columns)} columns defined")
+
+    # Test 3: Can create instance
+    document = Document(
+        title="Test Title",
+        content="Test document content",
+        doc_type=DocType.RUNBOOK,
+    )
+    assert document.title == "Test Title"
+    assert document.content == "Test document content"
+    assert document.doc_type == DocType.RUNBOOK
+    print("  ✅ Can create instance")
+
+    # Test 4: Inherits from Base and TimestampMixin
+    assert isinstance(document, Base)
+    assert hasattr(document, "created_at")
+    assert hasattr(document, "updated_at")
+    print("  ✅ Inherits from Base and TimestampMixin")
+
+    # Test 5: Check indexes exist
+    indexes = {ix.name for ix in document.__table__.indexes}
+    expected_indexes = {"ix_documents_service_id"}
+    assert expected_indexes.issubset(indexes), f"Missing indexes: {expected_indexes - indexes}"
+    print("  ✅ Indexes exist")
+
+    # Test 6: Relationships exist
+    assert hasattr(Document, "document_chunks")
+    assert hasattr(Document, "service")
+    print("  ✅ Relationships defined")
+
+    # Test 7: Check constraints
+    constraints = {c.name for c in document.__table__.constraints}
+    assert "ck_documents_valid_doc_type" in constraints, "Missing CHECK constraints"
+    print("  ✅ CHECK constraint 'ck_documents_valid_doc_type' defined")
+
+    print("✅ Document model: ALL TESTS PASSED\n")
+
+
+def test_document_chunk_model() -> None:
+    """Verify DocumentChunk model is defined correctly."""
+    print("Testing DocumentChunk model ...")
+
+    # Test 1: Table name
+    assert DocumentChunk.__tablename__ == "document_chunks", (
+        f"Expected 'documents'. got '{DocumentChunk.__tablename__}'"
+    )
+    print("  ✅ Table name: document_chunks")
+
+    # Test 2: Columns exist
+    columns = {c.name for c in DocumentChunk.__table__.columns}
+    expected = {
+        "id",
+        "document_id",
+        "content",
+        "embedding",
+        "chunk_index",
+        "metadata",  # Database column name (Python attribute is chunk_metadata)
+    }
+    assert columns == expected, f"Missing columns: {expected - columns}"
+    print(f"  ✅ All {len(columns)} columns defined")
+
+    # Test 3: Can create instance
+    document_chunk = DocumentChunk(
+        content="Test document chunk content",
+        chunk_index=123,
+        chunk_metadata={"test_key": "test_value"},
+    )
+    assert document_chunk.content == "Test document chunk content"
+    assert document_chunk.chunk_index == 123
+    assert document_chunk.chunk_metadata == {"test_key": "test_value"}
+    print("  ✅ Can create instance")
+
+    # Test 4: Inherits from Base
+    assert isinstance(document_chunk, Base)
+    print("  ✅ Inherits from Base")
+
+    # Test 5: Check indexes exist
+    indexes = {ix.name for ix in document_chunk.__table__.indexes}
+    expected_indexes = {"ix_document_chunks_embedding"}  # content_tsv index created via migration
+    assert expected_indexes.issubset(indexes), f"Missing indexes: {expected_indexes - indexes}"
+    print("  ✅ Indexes exist")
+
+    # Test 6: Relationships exist
+    assert hasattr(DocumentChunk, "document")
+    print("  ✅ Relationships defined")
+
+    print("✅ DocumentChunk model: ALL TESTS PASSED\n")
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("DATABASE MODELS SMOKE TESTS")
@@ -183,7 +295,8 @@ if __name__ == "__main__":
     test_service_model()
     test_ticket_model()
     test_ticket_comment_model()
-    # test_document_model()
+    test_document_model()
+    test_document_chunk_model()
 
     print("=" * 50)
     print("ALL SMOKE TESTS PASSED ✅")
