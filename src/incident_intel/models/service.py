@@ -13,6 +13,7 @@ from incident_intel.models.base import Base, TimestampMixin
 
 # Avoid circular import - only import for type checking
 if TYPE_CHECKING:
+    from incident_intel.models.document import Document
     from incident_intel.models.tickets import Ticket
 
 
@@ -45,6 +46,14 @@ class Service(Base, TimestampMixin):
     # Relationships
     tickets: Mapped[list["Ticket"]] = relationship(
         back_populates="service",
-        lazy="selectin",  # Async-compatible eager loading
+        lazy="selectin",
         cascade="all, delete-orphan",  # ORM-level cascade
+    )
+    documents: Mapped[list["Document"]] = relationship(
+        back_populates="service",
+        lazy="selectin",
+
+        # Let DB handle ON DELETE SET NULL
+        # Without it, SQLAlchemy may issue extra SELECT/UPDATE queries when deleting a Service
+        passive_deletes=True,
     )

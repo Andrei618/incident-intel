@@ -61,6 +61,7 @@ class Ticket(Base, TimestampMixin):
         server_default=text("gen_random_uuid()"),
     )
     service_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
         ForeignKey("services.id", ondelete="CASCADE"),  # Database-level cascade
         index=True,
     )
@@ -77,9 +78,8 @@ class Ticket(Base, TimestampMixin):
 
     # Relationships (string references to avoid circular imports)
     service: Mapped["Service"] = relationship(
-        lazy="joined",  # Async-compatible: eager load with JOIN
-        innerjoin=True,  # Required FK, use INNER JOIN for efficiency
         back_populates="tickets",
+        lazy="joined",  # Async-compatible: eager load with JOIN
     )
     comments: Mapped[list["TicketComment"]] = relationship(
         back_populates="ticket",
@@ -120,4 +120,5 @@ class TicketComment(Base):
     # Relationship
     ticket: Mapped["Ticket"] = relationship(
         back_populates="comments",
+        lazy="joined",
     )
