@@ -7,6 +7,7 @@ Run after creating/modifying models to catch syntax errors.
 from sqlalchemy import UniqueConstraint
 
 from incident_intel.models.base import Base
+from incident_intel.models.conversation import Conversation, Message, MessageRole
 from incident_intel.models.document import DocType, Document, DocumentChunk
 from incident_intel.models.service import Service
 from incident_intel.models.ticket_documents import TicketDocument
@@ -289,7 +290,7 @@ def test_document_chunk_model() -> None:
 
     print("✅ DocumentChunk model: ALL TESTS PASSED\n")
 
-def test_ticket_documents() -> None:
+def test_ticket_documents_model() -> None:
     """Verify TicketDocument model is defined correctly."""
     print("Testing TicketDocument model ...")
 
@@ -339,6 +340,107 @@ def test_ticket_documents() -> None:
 
     print("✅ TicketDocument model: ALL TESTS PASSED\n")
 
+
+def test_conversation_model() -> None:
+    """Verify Conversation model is defined correctly."""
+    print("Testing Conversation model ...")
+
+    # Test 1: Table name
+    assert Conversation.__tablename__ == "conversations", (
+        f"Expected 'documents'. got '{Conversation.__tablename__}'"
+    )
+    print("  ✅ Table name: conversations")
+
+    # Test 2: Columns exist
+    columns = {c.name for c in Conversation.__table__.columns}
+    expected = {
+        "id",
+        "user_id",
+        "created_at",
+        "updated_at",
+    }
+    assert columns == expected, f"Missing columns: {expected - columns}"
+    print(f"  ✅ All {len(columns)} columns defined")
+
+    # Test 3: Can create instance
+    conversation = Conversation()
+    assert isinstance(conversation, Conversation)
+    print("  ✅ Can create instance")
+
+    # Test 4: Inherits from Base and TimestampMixin
+    assert isinstance(conversation, Base)
+    assert hasattr(conversation, "created_at")
+    assert hasattr(conversation, "updated_at")
+    print("  ✅ Inherits from Base and TimestampMixin")
+
+    # Test 5: Check indexes exist
+    indexes = {ix.name for ix in conversation.__table__.indexes}
+    expected_indexes = {"ix_conversations_user_id"}
+    assert expected_indexes.issubset(indexes), f"Missing indexes: {expected_indexes - indexes}"
+    print("  ✅ Indexes exist")
+
+    # Test 6: Relationships exist
+    assert hasattr(Conversation, "messages")
+    print("  ✅ Relationships defined")
+
+    print("✅ Conversation model: ALL TESTS PASSED\n")
+
+
+def test_message_model() -> None:
+    """Verify Message model is defined correctly."""
+    print("Testing Message model ...")
+
+    # Test 1: Table name
+    assert Message.__tablename__ == "messages", (
+        f"Expected 'messages'. got '{Message.__tablename__}'"
+    )
+    print("  ✅ Table name: messages")
+
+    # Test 2: Columns exist
+    columns = {c.name for c in Message.__table__.columns}
+    expected = {
+        "id",
+        "conversation_id",
+        "role",
+        "content",
+        "token_count",
+        "created_at",
+    }
+    assert columns == expected, f"Missing columns: {expected - columns}"
+    print(f"  ✅ All {len(columns)} columns defined")
+
+    # Test 3: Can create instance
+    message = Message(
+        role=MessageRole.USER,
+        content="Test message content",
+    )
+    assert message.role == MessageRole.USER
+    assert message.content == "Test message content"
+    print("  ✅ Can create instance")
+
+    # Test 4: Inherits from Base
+    assert isinstance(message, Base)
+    print("  ✅ Inherits from Base")
+
+    # Test 5: Check indexes exist
+    indexes = {ix.name for ix in message.__table__.indexes}
+    expected_indexes = {"ix_messages_conversation"}
+    assert expected_indexes.issubset(indexes), f"Missing indexes: {expected_indexes - indexes}"
+    print("  ✅ Indexes exist")
+
+    # Test 6: Relationships exist
+    assert hasattr(Message, "conversation")
+    print("  ✅ Relationships defined")
+
+
+    # Test 7: Check constraints
+    constraints = {c.name for c in message.__table__.constraints}
+    assert "ck_messages_valid_role" in constraints, "Missing CHECK constraints"
+    print("  ✅ CHECK constraint 'ck_messages_valid_role' defined")
+
+    print("✅ Message model: ALL TESTS PASSED\n")
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("DATABASE MODELS SMOKE TESTS")
@@ -349,7 +451,9 @@ if __name__ == "__main__":
     test_ticket_comment_model()
     test_document_model()
     test_document_chunk_model()
-    test_ticket_documents()
+    test_ticket_documents_model()
+    test_conversation_model()
+    test_message_model()
 
     print("=" * 50)
     print("ALL SMOKE TESTS PASSED ✅")
