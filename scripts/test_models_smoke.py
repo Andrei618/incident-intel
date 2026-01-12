@@ -4,9 +4,12 @@ Verifies model definitions without database connection.
 Run after creating/modifying models to catch syntax errors.
 """
 
+from sqlalchemy import UniqueConstraint
+
 from incident_intel.models.base import Base
 from incident_intel.models.document import DocType, Document, DocumentChunk
 from incident_intel.models.service import Service
+from incident_intel.models.ticket_documents import TicketDocument
 from incident_intel.models.tickets import (
     Ticket,
     TicketComment,
@@ -286,6 +289,55 @@ def test_document_chunk_model() -> None:
 
     print("✅ DocumentChunk model: ALL TESTS PASSED\n")
 
+def test_ticket_documents() -> None:
+    """Verify TicketDocument model is defined correctly."""
+    print("Testing TicketDocument model ...")
+
+    # Test 1: Table name
+    assert TicketDocument.__tablename__ == "ticket_documents", (
+        f"Expected 'documents'. got '{TicketDocument.__tablename__}'"
+    )
+    print("  ✅ Table name: ticket_documents")
+
+    # Test 2: Columns exist
+    columns = {c.name for c in TicketDocument.__table__.columns}
+    expected = {
+        "id",
+        "ticket_id",
+        "document_id",
+        "relevance_score",
+        "linked_at",
+    }
+    assert columns == expected, f"Missing columns: {expected - columns}"
+    print(f"  ✅ All {len(columns)} columns defined")
+
+    # Test 3: Can create instance
+    ticket_document = TicketDocument()
+    assert isinstance(ticket_document, TicketDocument)
+    print("  ✅ Can create instance")
+
+    # Test 4: Inherits from Base
+    assert isinstance(ticket_document, Base)
+    print("  ✅ Inherits from Base")
+
+    # Test 5: Check indexes exist
+    indexes = {ix.name for ix in ticket_document.__table__.indexes}
+    expected_indexes = {"ix_ticket_documents_ticket_id", "ix_ticket_documents_document_id"}
+    assert expected_indexes.issubset(indexes), f"Missing indexes: {expected_indexes - indexes}"
+    print("  ✅ Indexes exist")
+
+    # Test 6: Relationships exist
+    assert hasattr(TicketDocument, "ticket")
+    assert hasattr(TicketDocument, "document")
+    print("  ✅ Relationships defined")
+
+    # Test 7: Check constraints
+    constraints = {c.name for c in ticket_document.__table__.constraints
+                    if isinstance(c, UniqueConstraint)}
+    assert len(constraints), "Missing UNIQUE constraint"
+    print("  ✅ UNIQUE constraint defined")
+
+    print("✅ TicketDocument model: ALL TESTS PASSED\n")
 
 if __name__ == "__main__":
     print("=" * 50)
@@ -297,6 +349,7 @@ if __name__ == "__main__":
     test_ticket_comment_model()
     test_document_model()
     test_document_chunk_model()
+    test_ticket_documents()
 
     print("=" * 50)
     print("ALL SMOKE TESTS PASSED ✅")

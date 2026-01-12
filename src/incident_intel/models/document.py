@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from incident_intel.models.service import Service
+    from incident_intel.models.ticket_documents import TicketDocument
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -86,6 +87,11 @@ class Document(Base, TimestampMixin):
     service: Mapped["Service | None"] = relationship(
         back_populates="documents",
         lazy="selectin",
+    )
+    ticket_documents: Mapped[list["TicketDocument"]] = relationship(
+        back_populates="document",
+        lazy="selectin",
+        cascade="all, delete-orphan",
     )
 
 

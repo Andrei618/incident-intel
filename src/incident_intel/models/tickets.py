@@ -15,6 +15,7 @@ from incident_intel.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from incident_intel.models.service import Service
+    from incident_intel.models.ticket_documents import TicketDocument
 
 
 class TicketStatus(enum.Enum):
@@ -85,6 +86,11 @@ class Ticket(Base, TimestampMixin):
         back_populates="ticket",
         lazy="selectin",
         cascade="all, delete-orphan",  # ORM-level cascade
+    )
+    ticket_documents: Mapped[list["TicketDocument"]] = relationship(
+        back_populates="ticket",
+        lazy="selectin",
+        cascade="all, delete-orphan",
     )
 
 
