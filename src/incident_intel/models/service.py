@@ -52,7 +52,6 @@ class Service(Base, TimestampMixin):
     documents: Mapped[list["Document"]] = relationship(
         back_populates="service",
         lazy="selectin",
-
         # Let DB handle ON DELETE SET NULL
         # Without it, SQLAlchemy may issue extra SELECT/UPDATE queries when deleting a Service
         passive_deletes=True,

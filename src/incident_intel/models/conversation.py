@@ -36,6 +36,7 @@ class MessageRole(enum.Enum):
     ASSISTANT = "assistant"
     SYSTEM = "system"
 
+
 class Conversation(Base, TimestampMixin):
     """Conversation entity.
 
@@ -85,12 +86,11 @@ class Message(Base):
     __table_args__ = (
         # Composite index
         Index("ix_messages_conversation", "conversation_id", "created_at"),
-
         # Constraint
         CheckConstraint(
             "role IN ('user', 'assistant', 'system')",
             name="valid_role",
-        )
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -126,4 +126,3 @@ class Message(Base):
         back_populates="messages",
         lazy="joined",
     )
-
