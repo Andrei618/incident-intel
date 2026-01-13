@@ -4,10 +4,6 @@ import enum
 import uuid
 from typing import TYPE_CHECKING, Any
 
-if TYPE_CHECKING:
-    from incident_intel.models.service import Service
-    from incident_intel.models.ticket_documents import TicketDocument
-
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     CheckConstraint,
@@ -25,6 +21,11 @@ from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from incident_intel.models.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from incident_intel.models.query_source import QuerySource
+    from incident_intel.models.service import Service
+    from incident_intel.models.ticket_document import TicketDocument
 
 EMBEDDING_DIMENSION = 1536
 
@@ -141,8 +142,13 @@ class DocumentChunk(Base):
         server_default=text("'{}'::jsonb"),
     )
 
-    # Relationship
+    # Relationships
     document: Mapped["Document"] = relationship(
         back_populates="document_chunks",
         lazy="selectin",
+    )
+    query_sources: Mapped[list["QuerySource"]] = relationship(
+        back_populates="document_chunk",
+        lazy="selectin",
+        cascade="all, delete-orphan",
     )

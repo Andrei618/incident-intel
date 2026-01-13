@@ -1,4 +1,4 @@
-"""Junction table with metadata.
+"""Junction table for Tickets and Documents.
 
 Allows M:N relationship between Tickets and Documents with metadata.
 """
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 class TicketDocument(Base):
     """Junction entity for M:N relationship.
 
-    Establishes relationship to both parents.
+    Establishes relationship to both parents: Tickets and Documents.
     Parent models have relationships to junction entity.
     """
 
