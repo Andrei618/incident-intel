@@ -9,6 +9,7 @@ from sqlalchemy import UniqueConstraint
 from incident_intel.models.base import Base
 from incident_intel.models.conversation import Conversation, Message, MessageRole
 from incident_intel.models.document import DocType, Document, DocumentChunk
+from incident_intel.models.review import PendingReview, ReviewStatus
 from incident_intel.models.service import Service
 from incident_intel.models.ticket_documents import TicketDocument
 from incident_intel.models.tickets import (
@@ -347,7 +348,7 @@ def test_conversation_model() -> None:
 
     # Test 1: Table name
     assert Conversation.__tablename__ == "conversations", (
-        f"Expected 'documents'. got '{Conversation.__tablename__}'"
+        f"Expected 'conversations'. got '{Conversation.__tablename__}'"
     )
     print("  ✅ Table name: conversations")
 
@@ -440,6 +441,70 @@ def test_message_model() -> None:
 
     print("✅ Message model: ALL TESTS PASSED\n")
 
+def test_pending_review_model() -> None:
+    """Verify PendingReview model is defined correctly."""
+    print("Testing PendingReview model ...")
+
+    # Test 1: Table name
+    assert PendingReview.__tablename__ == "pending_reviews", (
+        f"Expected 'pending_reviews'. got '{PendingReview.__tablename__}'"
+    )
+    print("  ✅ Table name: pending_reviews")
+
+    # Test 2: Columns exist
+    columns = {c.name for c in PendingReview.__table__.columns}
+    expected = {
+        "id",
+        "conversation_id",
+        "question",
+        "generated_answer",
+        "confidence_score",
+        "sources",
+        "status",
+        "reviewer_notes",
+        "created_at",
+        "reviewed_at",
+    }
+    assert columns == expected, f"Missing columns: {expected - columns}"
+    print(f"  ✅ All {len(columns)} columns defined")
+
+    # Test 3: Can create instance
+    pending_review = PendingReview(
+        question="Test question",
+        generated_answer="Test answer",
+        confidence_score=0.75,
+        status=ReviewStatus.PENDING,
+    )
+    assert pending_review.question == "Test question"
+    assert pending_review.generated_answer == "Test answer"
+    assert pending_review.confidence_score == 0.75
+    assert pending_review.status == ReviewStatus.PENDING
+    print("  ✅ Can create instance")
+
+    # Test 4: Inherits from Base
+    assert isinstance(pending_review, Base)
+    print("  ✅ Inherits from Base")
+
+    # Test 5: Check indexes exist
+    indexes = {ix.name for ix in pending_review.__table__.indexes}
+    expected_indexes = {
+        "ix_pending_reviews_conversation_id",
+        "ix_pending_reviews_status",
+    }
+    assert expected_indexes.issubset(indexes), f"Missing indexes: {expected_indexes - indexes}"
+    print("  ✅ Indexes exist")
+
+    # Test 6: Relationships exist
+    assert hasattr(PendingReview, "conversation")
+    print("  ✅ Relationships defined")
+
+    # Test 7: Check constraints
+    constraints = {c.name for c in pending_review.__table__.constraints}
+    assert "ck_pending_reviews_valid_review_status" in constraints, "Missing CHECK constraints"
+    print("  ✅ CHECK constraint 'ck_pending_reviews_valid_review_status' defined")
+
+    print("✅ PendingReview model: ALL TESTS PASSED\n")
+
 
 if __name__ == "__main__":
     print("=" * 50)
@@ -454,6 +519,7 @@ if __name__ == "__main__":
     test_ticket_documents_model()
     test_conversation_model()
     test_message_model()
+    test_pending_review_model()
 
     print("=" * 50)
     print("ALL SMOKE TESTS PASSED ✅")
