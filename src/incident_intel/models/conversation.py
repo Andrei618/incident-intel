@@ -25,6 +25,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from incident_intel.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from incident_intel.models.query_log import QueryLog
     from incident_intel.models.review import PendingReview
 
 
@@ -65,6 +66,12 @@ class Conversation(Base, TimestampMixin):
         back_populates="conversation",
         lazy="selectin",
         order_by="PendingReview.created_at",
+    )
+    query_logs: Mapped[list["QueryLog"]] = relationship(
+        back_populates="conversation",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="QueryLog.created_at",
     )
 
 

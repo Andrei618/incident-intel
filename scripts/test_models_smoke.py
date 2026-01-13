@@ -9,6 +9,7 @@ from sqlalchemy import UniqueConstraint
 from incident_intel.models.base import Base
 from incident_intel.models.conversation import Conversation, Message, MessageRole
 from incident_intel.models.document import DocType, Document, DocumentChunk
+from incident_intel.models.query_log import QueryLog, Route
 from incident_intel.models.review import PendingReview, ReviewStatus
 from incident_intel.models.service import Service
 from incident_intel.models.ticket_documents import TicketDocument
@@ -505,6 +506,69 @@ def test_pending_review_model() -> None:
 
     print("✅ PendingReview model: ALL TESTS PASSED\n")
 
+def test_query_log_model() -> None:
+    """Verify QueryLog model is defined correctly."""
+    print("Testing QueryLog model ...")
+
+    # Test 1: Table name
+    assert QueryLog.__tablename__ == "query_logs", (
+        f"Expected 'query_logs'. got '{QueryLog.__tablename__}'"
+    )
+    print("  ✅ Table name: query_logs")
+
+    # Test 2: Columns exist
+    columns = {c.name for c in QueryLog.__table__.columns}
+    expected = {
+        "id",
+        "conversation_id",
+        "query_text",
+        "route_used",
+        "confidence",
+        "latency_ms",
+        "category",
+        "is_synthetic",
+        "created_at",
+    }
+    assert columns == expected, f"Missing columns: {expected - columns}"
+    print(f"  ✅ All {len(columns)} columns defined")
+
+    # Test 3: Can create instance
+    query_log = QueryLog(
+        query_text="Test query_text",
+        route_used=Route.SQL,
+        latency_ms=100,
+        is_synthetic=False,
+    )
+    assert query_log.query_text == "Test query_text"
+    assert query_log.route_used == Route.SQL
+    assert query_log.latency_ms == 100
+    assert query_log.is_synthetic is False
+    print("  ✅ Can create instance")
+
+    # Test 4: Inherits from Base
+    assert isinstance(query_log, Base)
+    print("  ✅ Inherits from Base")
+
+    # Test 5: Check indexes exist
+    indexes = {ix.name for ix in query_log.__table__.indexes}
+    expected_indexes = {
+        "ix_query_logs_created_at",
+        "ix_query_logs_route_used",
+        "ix_query_logs_conversation_id",
+    }
+    assert expected_indexes.issubset(indexes), f"Missing indexes: {expected_indexes - indexes}"
+    print("  ✅ Indexes exist")
+
+    # Test 6: Relationships exist
+    assert hasattr(QueryLog, "conversation")
+    print("  ✅ Relationships defined")
+
+    # Test 7: Check constraints
+    constraints = {c.name for c in query_log.__table__.constraints}
+    assert "ck_query_logs_valid_route" in constraints, "Missing CHECK constraints"
+    print("  ✅ CHECK constraint 'ck_query_logs_valid_route' defined")
+
+    print("✅ PendingReview model: ALL TESTS PASSED\n")
 
 if __name__ == "__main__":
     print("=" * 50)
@@ -520,6 +584,7 @@ if __name__ == "__main__":
     test_conversation_model()
     test_message_model()
     test_pending_review_model()
+    test_query_log_model()
 
     print("=" * 50)
     print("ALL SMOKE TESTS PASSED ✅")
