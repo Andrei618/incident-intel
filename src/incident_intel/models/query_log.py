@@ -22,6 +22,7 @@ from incident_intel.models.base import Base
 
 if TYPE_CHECKING:
     from incident_intel.models.conversation import Conversation
+    from incident_intel.models.query_source import QuerySource
 
 
 class Route(enum.Enum):
@@ -78,8 +79,13 @@ class QueryLog(Base):
         server_default=func.now(),
         index=True,
     )
-    # Relationship
+    # Relationships
     conversation: Mapped["Conversation | None"] = relationship(
         back_populates="query_logs",
         lazy="selectin",
+    )
+    query_sources: Mapped[list["QuerySource"]] = relationship(
+        back_populates="query_log",
+        lazy="selectin",
+        cascade="all, delete-orphan",
     )

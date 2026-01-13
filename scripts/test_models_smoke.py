@@ -10,9 +10,10 @@ from incident_intel.models.base import Base
 from incident_intel.models.conversation import Conversation, Message, MessageRole
 from incident_intel.models.document import DocType, Document, DocumentChunk
 from incident_intel.models.query_log import QueryLog, Route
+from incident_intel.models.query_source import QuerySource
 from incident_intel.models.review import PendingReview, ReviewStatus
 from incident_intel.models.service import Service
-from incident_intel.models.ticket_documents import TicketDocument
+from incident_intel.models.ticket_document import TicketDocument
 from incident_intel.models.tickets import (
     Ticket,
     TicketComment,
@@ -292,6 +293,7 @@ def test_document_chunk_model() -> None:
 
     print("✅ DocumentChunk model: ALL TESTS PASSED\n")
 
+
 def test_ticket_documents_model() -> None:
     """Verify TicketDocument model is defined correctly."""
     print("Testing TicketDocument model ...")
@@ -335,8 +337,9 @@ def test_ticket_documents_model() -> None:
     print("  ✅ Relationships defined")
 
     # Test 7: Check constraints
-    constraints = {c.name for c in ticket_document.__table__.constraints
-                    if isinstance(c, UniqueConstraint)}
+    constraints = {
+        c.name for c in ticket_document.__table__.constraints if isinstance(c, UniqueConstraint)
+    }
     assert len(constraints), "Missing UNIQUE constraint"
     print("  ✅ UNIQUE constraint defined")
 
@@ -434,13 +437,13 @@ def test_message_model() -> None:
     assert hasattr(Message, "conversation")
     print("  ✅ Relationships defined")
 
-
     # Test 7: Check constraints
     constraints = {c.name for c in message.__table__.constraints}
     assert "ck_messages_valid_role" in constraints, "Missing CHECK constraints"
     print("  ✅ CHECK constraint 'ck_messages_valid_role' defined")
 
     print("✅ Message model: ALL TESTS PASSED\n")
+
 
 def test_pending_review_model() -> None:
     """Verify PendingReview model is defined correctly."""
@@ -506,6 +509,7 @@ def test_pending_review_model() -> None:
 
     print("✅ PendingReview model: ALL TESTS PASSED\n")
 
+
 def test_query_log_model() -> None:
     """Verify QueryLog model is defined correctly."""
     print("Testing QueryLog model ...")
@@ -570,6 +574,65 @@ def test_query_log_model() -> None:
 
     print("✅ PendingReview model: ALL TESTS PASSED\n")
 
+
+def test_query_source_model() -> None:
+    """Verify QuerySource model is defined correctly."""
+    print("Testing QuerySource model ...")
+
+    # Test 1: Table name
+    assert QuerySource.__tablename__ == "query_sources", (
+        f"Expected 'query_sources'. got '{QuerySource.__tablename__}'"
+    )
+    print("  ✅ Table name: query_sources")
+
+    # Test 2: Columns exist
+    columns = {c.name for c in QuerySource.__table__.columns}
+    expected = {
+        "id",
+        "query_log_id",
+        "chunk_id",
+        "rank",
+        "relevance_score",
+        "was_used",
+    }
+    assert columns == expected, f"Missing columns: {expected - columns}"
+    print(f"  ✅ All {len(columns)} columns defined")
+
+    # Test 3: Can create instance
+    query_source = QuerySource(
+        rank=1,
+    )
+    assert query_source.rank == 1
+    print("  ✅ Can create instance")
+
+    # Test 4: Inherits from Base
+    assert isinstance(query_source, Base)
+    print("  ✅ Inherits from Base")
+
+    # Test 5: Check indexes exist
+    indexes = {ix.name for ix in query_source.__table__.indexes}
+    expected_indexes = {
+        "ix_query_sources_query_log_id",
+        "ix_query_sources_chunk_id",
+    }
+    assert expected_indexes.issubset(indexes), f"Missing indexes: {expected_indexes - indexes}"
+    print("  ✅ Indexes exist")
+
+    # Test 6: Relationships exist
+    assert hasattr(QuerySource, "query_log")
+    assert hasattr(QuerySource, "document_chunk")
+    print("  ✅ Relationships defined")
+
+    # Test 7: Check constraints
+    constraints = {
+        c.name for c in query_source.__table__.constraints if isinstance(c, UniqueConstraint)
+    }
+    assert len(constraints), "Missing UNIQUE constraint"
+    print("  ✅ UNIQUE constraint defined")
+
+    print("✅ PendingReview model: ALL TESTS PASSED\n")
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("DATABASE MODELS SMOKE TESTS")
@@ -585,6 +648,7 @@ if __name__ == "__main__":
     test_message_model()
     test_pending_review_model()
     test_query_log_model()
+    test_query_source_model()
 
     print("=" * 50)
     print("ALL SMOKE TESTS PASSED ✅")
