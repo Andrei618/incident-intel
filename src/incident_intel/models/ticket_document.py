@@ -33,9 +33,7 @@ class TicketDocument(Base):
     """
 
     __tablename__ = "ticket_documents"
-    __table_args__ = (
-        UniqueConstraint("ticket_id", "document_id"),
-    )
+    __table_args__ = (UniqueConstraint("ticket_id", "document_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
