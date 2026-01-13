@@ -6,6 +6,7 @@ Includes Conversation and Messages.
 import enum
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     CheckConstraint,
@@ -22,6 +23,9 @@ from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from incident_intel.models.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from incident_intel.models.review import PendingReview
 
 
 class MessageRole(enum.Enum):
@@ -56,6 +60,11 @@ class Conversation(Base, TimestampMixin):
         lazy="selectin",
         cascade="all, delete-orphan",
         order_by="Message.created_at",
+    )
+    pending_reviews: Mapped[list["PendingReview"]] = relationship(
+        back_populates="conversation",
+        lazy="selectin",
+        order_by="PendingReview.created_at",
     )
 
 
