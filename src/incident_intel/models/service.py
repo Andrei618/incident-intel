@@ -14,7 +14,7 @@ from incident_intel.models.base import Base, TimestampMixin
 # Avoid circular import - only import for type checking
 if TYPE_CHECKING:
     from incident_intel.models.document import Document
-    from incident_intel.models.tickets import Ticket
+    from incident_intel.models.ticket import Ticket
 
 
 class Service(Base, TimestampMixin):

@@ -22,7 +22,7 @@ from incident_intel.models.base import Base
 
 if TYPE_CHECKING:
     from incident_intel.models.document import Document
-    from incident_intel.models.tickets import Ticket
+    from incident_intel.models.ticket import Ticket
 
 
 class TicketDocument(Base):
