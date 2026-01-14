@@ -10,8 +10,8 @@ from incident_intel.models.query_log import QueryLog, Route
 from incident_intel.models.query_source import QuerySource
 from incident_intel.models.review import PendingReview, ReviewStatus
 from incident_intel.models.service import Service
-from incident_intel.models.ticket_document import TicketDocument
 from incident_intel.models.ticket import Ticket, TicketComment, TicketPriority, TicketStatus
+from incident_intel.models.ticket_document import TicketDocument
 
 __all__ = [
     "Base",

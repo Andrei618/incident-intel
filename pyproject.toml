@@ -86,7 +86,7 @@ ignore = [
 ]
 
 [tool.ruff]
-line-length = 100 # Match your E501 ignore
+line-length = 100 # Match E501 ignore
 target-version = "py313"
 
 [tool.ruff.lint.mccabe]
