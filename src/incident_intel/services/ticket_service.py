@@ -1,0 +1,115 @@
+"""Service layer for ticket operations."""
+
+from datetime import UTC, datetime
+from uuid import UUID
+
+from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from incident_intel.models.ticket import Ticket, TicketStatus
+from incident_intel.schemas.ticket import TicketCreate, TicketUpdate
+
+
+async def create_ticket(
+    session: AsyncSession,
+    data: TicketCreate,
+) -> Ticket:
+    """Create a new ticket.
+
+    Args:
+        session: Active database session.
+        data: Validated ticket creation data.
+
+    Returns:
+        Created ticket with generated ID and timestamps.
+    """
+    # Convert Pydantic to dict
+    ticket_dict = data.model_dump()
+
+    # Create SQLAlchemy model
+    new_ticket = Ticket(**ticket_dict)
+
+    # Add to session
+    session.add(new_ticket)
+
+    # Commit and refresh
+    await session.commit()
+    await session.refresh(new_ticket)
+
+    return new_ticket
+
+async def get_ticket(
+    session: AsyncSession,
+    ticket_id: UUID,
+) -> Ticket:
+    """Get a ticket by ID.
+
+    Args:
+        session: Active database session.
+        ticket_id: UUID of the ticket to retrieve.
+
+    Returns:
+        The requested ticket.
+
+    Raises:
+        HTTPException: 404 if ticket not found.
+    """
+    # Build and execute query
+    stmt = select(Ticket).where(Ticket.id == ticket_id)
+    ticket = await session.scalar(stmt)
+
+    # Handle not found
+    if ticket is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Ticket {ticket_id} not found",
+        )
+
+    return ticket
+
+async def update_ticket(
+    session: AsyncSession,
+    ticket_id: UUID,
+    update_data: TicketUpdate
+) -> Ticket:
+    """Update an existing ticket.
+
+    Args:
+        session: Active database session.
+        ticket_id: UUID of the ticket to update.
+        update_data: Fields to update (partial updates supported).
+
+    Returns:
+        Updated ticket.
+
+    Raises:
+        HTTPException: 404 if ticket not found.
+    """
+    # 1. Get existing ticket (raises 404 if not found)
+    ticket = await get_ticket(session, ticket_id)
+
+    # 2. Get only the fields that were provided
+    update_dict = update_data.model_dump(exclude_unset=True)
+
+    # 3. Apply business logic for resolved_at
+    if "status" in update_dict:
+        if update_dict["status"] in [TicketStatus.RESOLVED, TicketStatus.CLOSED]:
+            # Auto-set resolved_at when closing
+            if ticket.resolved_at is None:
+                ticket.resolved_at = datetime.now(UTC)
+        elif update_dict["status"] in [TicketStatus.OPEN, TicketStatus.IN_PROGRESS]:
+            # Clear resolved_at when reopening
+            ticket.resolved_at = None
+
+    # 4. Update each field
+    for field, value in update_dict.items():
+        setattr(ticket, field, value)
+
+    # 5. Commit and refresh
+    await session.commit()
+    await session.refresh(ticket)
+
+    return ticket
+
+
