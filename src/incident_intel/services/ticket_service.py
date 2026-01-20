@@ -4,10 +4,10 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from incident_intel.models.ticket import Ticket, TicketStatus
+from incident_intel.models.ticket import Ticket, TicketPriority, TicketStatus
 from incident_intel.schemas.ticket import TicketCreate, TicketUpdate
 
 
@@ -112,4 +112,56 @@ async def update_ticket(
 
     return ticket
 
+async def list_tickets(
+    session: AsyncSession,
+    status: TicketStatus | None = None,
+    priority: TicketPriority | None = None,
+    service_id: UUID | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> tuple[list[Ticket], int]:
+    """List tickets with optional filters and pagination.
 
+    Args:
+        session: Active database session.
+        status: Filter by ticket status (optional).
+        priority: Filter by priority level (optional).
+        service_id: Filter by service ID (optional).
+        limit: Maximum number of tickets to return (default: 20).
+        offset: Number of tickets to skip (default: 0).
+
+    Returns:
+        Tuple of (list of tickets, total count matching filters).
+
+    Example:
+    >>> tickets, total = await list_tickets(
+    ...     session,
+    ...     status=TicketStatus.OPEN,
+    ...     limit=10
+    ... )
+    >>> print(f"Found {total} open tickets, showing first 10")
+    """
+    # 1. Build filter conditions
+    filters = []
+    if status is not None:
+        filters.append(Ticket.status == status)
+    if priority is not None:
+        filters.append(Ticket.priority == priority)
+    if service_id is not None:
+        filters.append(Ticket.service_id == service_id)
+
+    # 2. Main query
+    stmt = select(Ticket).where(*filters)
+    stmt = stmt.order_by(Ticket.created_at.desc())
+    stmt = stmt.limit(limit).offset(offset)
+
+    # 3. Execute main query
+    result = await session.execute(stmt)
+    tickets = list(result.scalars().all())
+
+    # 4. Count query
+    count_stmt = select(func.count()).select_from(Ticket).where(*filters)
+    total = await session.scalar(count_stmt) or 0
+
+    # 5. Return results
+    return tickets, total
