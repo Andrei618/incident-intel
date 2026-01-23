@@ -1,0 +1,93 @@
+"""API route functions."""
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from incident_intel.core.database import get_session
+from incident_intel.models.ticket import Ticket, TicketPriority, TicketStatus
+from incident_intel.schemas.ticket import (
+    TicketCreate,
+    TicketListResponse,
+    TicketResponse,
+    TicketUpdate,
+)
+from incident_intel.services.ticket_service import (
+    create_ticket,
+    get_ticket,
+    list_tickets,
+    update_ticket,
+)
+
+router = APIRouter(prefix="/tickets", tags=["tickets"])
+
+
+@router.post("", response_model=TicketResponse, status_code=status.HTTP_201_CREATED)
+async def create_ticket_endpoint(
+    ticket: TicketCreate,
+    session: AsyncSession = Depends(get_session),
+) -> Ticket:
+    """Create a new ticket."""
+    return await create_ticket(
+        data=ticket,
+        session=session,
+    )
+
+
+@router.get("/{ticket_id}", response_model=TicketResponse)
+async def get_ticket_endpoint(
+    ticket_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> Ticket:
+    """Get ticket by ID."""
+    return await get_ticket(
+        ticket_id=ticket_id,
+        session=session,
+    )
+
+
+@router.put("/{ticket_id}", response_model=TicketResponse)
+async def update_ticket_endpoint(
+    ticket_id: UUID,
+    update_data: TicketUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> Ticket:
+    """Update ticket by ID. Accepts partial updates."""
+    return await update_ticket(
+        ticket_id=ticket_id,
+        update_data=update_data,
+        session=session,
+    )
+
+
+@router.get("", response_model=TicketListResponse)
+async def list_tickets_endpoint(
+    status: TicketStatus | None = Query(None, description="Filter by status"),
+    priority: TicketPriority | None = Query(None, description="Filter by priority"),
+    service_id: UUID | None = Query(None, description="Filter by service ID"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    offset: int = Query(0, ge=0, description="Items to skip"),
+    session: AsyncSession = Depends(get_session),
+) -> TicketListResponse:
+    """List tickets with optional filters and pagination.
+
+    Returns:
+        TicketListResponse: Paginated list of tickets with metadata.
+    """
+    tickets, total = await list_tickets(
+        status=status,
+        priority=priority,
+        service_id=service_id,
+        limit=limit,
+        offset=offset,
+        session=session,
+    )
+    return TicketListResponse(
+        items=[
+            TicketResponse.model_validate(ticket) for ticket in tickets
+        ],  # Explicit for mypy --strict
+        total=total,
+        limit=limit,
+        offset=offset,
+    )

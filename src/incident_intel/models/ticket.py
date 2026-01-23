@@ -80,7 +80,7 @@ class Ticket(Base, TimestampMixin):
     # Relationships (string references to avoid circular imports)
     service: Mapped["Service"] = relationship(
         back_populates="tickets",
-        lazy="joined",  # Async-compatible: eager load with JOIN
+        lazy="selectin",  # Async-compatible: lazy load (batched), API only uses service_id
     )
     comments: Mapped[list["TicketComment"]] = relationship(
         back_populates="ticket",

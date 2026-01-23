@@ -8,6 +8,7 @@ load_dotenv()
 
 from fastapi import FastAPI  # noqa: E402, I001 //E402: import not at top, I001: import block is unsorted
 from incident_intel.api import health  # noqa: E402
+from incident_intel.api.v1 import tickets  # noqa: E402
 
 app: FastAPI = FastAPI(
     title="Incident Intelligence Assistant",
@@ -19,3 +20,4 @@ app: FastAPI = FastAPI(
 )
 
 app.include_router(health.router)
+app.include_router(tickets.router, prefix="/api/v1")
