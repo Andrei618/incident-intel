@@ -78,10 +78,7 @@ class TicketUpdate(BaseModel):
         max_length=100,
         description="User who reported the issue",
     )
-    resolved_at: datetime | None = Field(
-        None,
-        description="Timestamp when ticket was resolved",
-    )
+
 
 class TicketResponse(BaseModel):
     """Response schema for a single ticket."""

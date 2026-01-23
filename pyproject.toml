@@ -69,6 +69,7 @@ select = [
     "PTH",   # flake8-use-pathlib - prefer pathlib over os.path
 ]
 ignore = [
+    "B008",   # Allow function calls in argument defaults (FastAPI pattern)
     "E501",   # Line too long (we use 100-char limit, not 79)
     "D203",   # 1 blank line before class docstring (conflicts with D211)
     "D213",   # Multi-line docstring summary on second line (conflicts with D212)

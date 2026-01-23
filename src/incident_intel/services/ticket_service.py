@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from incident_intel.models.ticket import Ticket, TicketPriority, TicketStatus
@@ -23,21 +24,39 @@ async def create_ticket(
 
     Returns:
         Created ticket with generated ID and timestamps.
+
+    Raises:
+        HTTPException: 400 if service_id doesn't exist or data violates constraints.
     """
-    # Convert Pydantic to dict
     ticket_dict = data.model_dump()
-
-    # Create SQLAlchemy model
     new_ticket = Ticket(**ticket_dict)
-
-    # Add to session
     session.add(new_ticket)
 
-    # Commit and refresh
-    await session.commit()
-    await session.refresh(new_ticket)
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        await session.rollback()
+        error_msg = str(e.orig)
 
+        if "fk_tickets_service_id_services" in error_msg:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Service with ID {data.service_id} does not exist",
+            ) from e
+        elif "ck_" in error_msg or "resolved_requires_status" in error_msg:
+            raise HTTPException(
+                status_code=400,
+                detail="Data violates business rules (e.g., resolved_at without proper status)",
+            ) from e
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid data: constraint violation",
+            ) from e
+
+    await session.refresh(new_ticket)
     return new_ticket
+
 
 async def get_ticket(
     session: AsyncSession,
@@ -68,10 +87,9 @@ async def get_ticket(
 
     return ticket
 
+
 async def update_ticket(
-    session: AsyncSession,
-    ticket_id: UUID,
-    update_data: TicketUpdate
+    session: AsyncSession, ticket_id: UUID, update_data: TicketUpdate
 ) -> Ticket:
     """Update an existing ticket.
 
@@ -106,11 +124,33 @@ async def update_ticket(
     for field, value in update_dict.items():
         setattr(ticket, field, value)
 
-    # 5. Commit and refresh
-    await session.commit()
-    await session.refresh(ticket)
+    # 5. Commit with error handling
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        await session.rollback()
+        error_msg = str(e.orig)
 
+        if "fk_tickets_service_id_services" in error_msg:
+            service_id = update_dict.get("service_id", "unknown")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Service with ID {service_id} does not exist",
+            ) from e
+        elif "ck_" in error_msg or "resolved_requires_status" in error_msg:
+            raise HTTPException(
+                status_code=400,
+                detail="Data violates business rules (e.g., resolved_at without proper status)",
+            ) from e
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid data: constraint violation",
+            ) from e
+
+    await session.refresh(ticket)
     return ticket
+
 
 async def list_tickets(
     session: AsyncSession,
@@ -152,7 +192,7 @@ async def list_tickets(
 
     # 2. Main query
     stmt = select(Ticket).where(*filters)
-    stmt = stmt.order_by(Ticket.created_at.desc())
+    stmt = stmt.order_by(Ticket.created_at.desc(), Ticket.id.desc())
     stmt = stmt.limit(limit).offset(offset)
 
     # 3. Execute main query
