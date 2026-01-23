@@ -59,9 +59,7 @@ class TicketUpdate(BaseModel):
         description="Detailed description of the issue",
     )
     status: TicketStatus | None = Field(
-        None,
-        description="Ticket status",
-        examples=["open", "in_progress", "resolved", "closed"]
+        None, description="Ticket status", examples=["open", "in_progress", "resolved", "closed"]
     )
     priority: TicketPriority | None = Field(
         None,
@@ -96,6 +94,7 @@ class TicketResponse(BaseModel):
     reporter: str | None
 
     model_config = ConfigDict(from_attributes=True)  # Enables ORM conversion
+
 
 class TicketListResponse(BaseModel):
     """Response schema for paginated ticket list."""
