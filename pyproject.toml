@@ -111,6 +111,7 @@ dev = [
     "ruff>=0.14.14",
     "mypy>=1.19.1",
     "pre-commit>=4.5.1",
+    "types-redis>=4.6.0",
 
     # CLI output
     "rich>=14.2.0"
