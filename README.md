@@ -89,6 +89,11 @@ This assistant helps IT operations teams by:
    docker exec -it incident-intel-redis redis-cli ping
    ```
 
+6. **Install pre-commit hooks:**
+   ```bash
+   uv run pre-commit install
+   ```
+
 ---
 
 ## 🏗️ Project Structure
@@ -142,6 +147,35 @@ uv run mypy src/
 # Run tests
 uv run pytest
 ```
+
+### Pre-commit Hooks
+
+This project uses [pre-commit](https://pre-commit.com/) to automatically check code quality before commits.
+
+**Setup (one-time):**
+```bash
+# Install pre-commit hooks
+uv run pre-commit install
+```
+
+**Usage:**
+```bash
+# Hooks run automatically on git commit
+git commit -m "your message"
+
+# Run manually on all files
+uv run pre-commit run --all-files
+
+# Run manually on staged files only
+uv run pre-commit run
+```
+
+**What gets checked:**
+- ✅ Ruff linting (with auto-fix)
+- ✅ Ruff formatting
+- ✅ Mypy type checking (strict mode)
+
+**Note:** If hooks fail, the commit is blocked. Fix the issues and try again.
 
 ### Database Management
 

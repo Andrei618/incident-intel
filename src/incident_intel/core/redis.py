@@ -9,7 +9,7 @@ REDIS_URL = os.getenv(
     "redis://localhost:6379/0",
 )
 
-redis_client = redis.from_url(REDIS_URL)  # type: ignore[no-untyped-call]
+redis_client = redis.from_url(REDIS_URL)
 
 
 async def check_redis_connection() -> bool:
