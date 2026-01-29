@@ -30,6 +30,7 @@ dependencies = [
     # Utilities
     "python-dotenv>=1.2.1",
     "psycopg[binary]>=3.3.2",
+    "structlog>=25.5.0",
 ]
 
 [build-system]
