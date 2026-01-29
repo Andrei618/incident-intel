@@ -17,5 +17,5 @@ repos:
     hooks:
       - id: mypy
         args: [--strict]
-        additional_dependencies: [types-redis, "sqlalchemy[mypy]", pydantic, fastapi]
+        additional_dependencies: [types-redis, "sqlalchemy[mypy]", pydantic, fastapi, structlog]
         files: ^src/
