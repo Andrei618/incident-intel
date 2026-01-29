@@ -86,7 +86,7 @@ def configure_logging() -> None:
     # Configure structlog
     structlog.configure(
         processors=[
-            *shared_processors,
+            *shared_processors,  # type: ignore[list-item]
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
@@ -98,8 +98,8 @@ def configure_logging() -> None:
     # Create formatter that applies structlog processors to stdlib logs
     formatter = structlog.stdlib.ProcessorFormatter(
         processors=[
-            *shared_processors,
-            *rendering_processors,
+            *shared_processors,  # type: ignore[list-item]
+            *rendering_processors,  # type: ignore[list-item]
         ],
     )
 
@@ -129,4 +129,4 @@ def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
         >>> logger = get_logger(__name__)
         >>> logger.info("user_action", user_id=123, action="login")
     """
-    return structlog.get_logger(name)
+    return structlog.get_logger(name)  # type: ignore[no-any-return]
