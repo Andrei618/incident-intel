@@ -44,6 +44,7 @@ async def create_ticket(
 
     try:
         await session.commit()
+        await session.refresh(new_ticket)  # Reload to get the generated ID
         logger.info("ticket_created", ticket_id=str(new_ticket.id))
     except IntegrityError as e:
         await session.rollback()
