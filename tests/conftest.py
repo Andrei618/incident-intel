@@ -51,7 +51,7 @@ async def test_engine() -> AsyncGenerator[AsyncEngine]:
 
 
 @pytest.fixture(scope="function")
-async def test_session(test_engine) -> AsyncGenerator[AsyncSession]:
+async def test_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession]:
     """Fixture for creating session.
 
     Creates a fresh session for each test.

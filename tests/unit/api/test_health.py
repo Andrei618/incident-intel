@@ -1,6 +1,6 @@
 """Test health endpoint."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import status
@@ -18,8 +18,8 @@ def client() -> TestClient:
 @patch("incident_intel.api.health.check_redis_connection")
 @patch("incident_intel.api.health.check_database_connection")
 def test_health_endpoint_returns_healthy_status(
-    mock_db,
-    mock_redis,
+    mock_db: MagicMock,
+    mock_redis: MagicMock,
     client: TestClient,
 ) -> None:
     """Health endpoint returns healthy status if both services connected."""
@@ -40,8 +40,8 @@ def test_health_endpoint_returns_healthy_status(
 @patch("incident_intel.api.health.check_redis_connection")
 @patch("incident_intel.api.health.check_database_connection")
 def test_health_endpoint_database_down(
-    mock_db,
-    mock_redis,
+    mock_db: MagicMock,
+    mock_redis: MagicMock,
     client: TestClient,
 ) -> None:
     """Health endpoint returns unhealthy status if database is disconnected."""
@@ -62,8 +62,8 @@ def test_health_endpoint_database_down(
 @patch("incident_intel.api.health.check_redis_connection")
 @patch("incident_intel.api.health.check_database_connection")
 def test_health_endpoint_redis_down(
-    mock_db,
-    mock_redis,
+    mock_db: MagicMock,
+    mock_redis: MagicMock,
     client: TestClient,
 ) -> None:
     """Health endpoint returns unhealthy status if redis is disconnected."""
@@ -84,8 +84,8 @@ def test_health_endpoint_redis_down(
 @patch("incident_intel.api.health.check_redis_connection")
 @patch("incident_intel.api.health.check_database_connection")
 def test_health_endpoint_database_and_redis_down(
-    mock_db,
-    mock_redis,
+    mock_db: MagicMock,
+    mock_redis: MagicMock,
     client: TestClient,
 ) -> None:
     """Health endpoint returns unhealthy status if redis is disconnected."""
