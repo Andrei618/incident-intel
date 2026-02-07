@@ -72,7 +72,6 @@ async def create_ticket(
                 detail="Invalid data: constraint violation",
             ) from e
 
-    await session.refresh(new_ticket)
     return new_ticket
 
 
