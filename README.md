@@ -9,19 +9,18 @@
 
 ---
 
-## 🚧 Project Status
+## 🚧 Status
 
-**Currently in active development**
+**Current Phase:** Active Development
 
-**Completed:**
-- ✅ Project initialization and dependency management
-- ✅ Docker infrastructure (PostgreSQL 17 + pgvector, Redis 7.4)
-- ✅ Development environment configuration
+This project demonstrates a production-ready FastAPI application with modern Python tooling and AI/RAG capabilities.
 
-**In Progress:**
-- 🔄 Database schema and migrations
-- 🔄 FastAPI application skeleton
-- 🔄 Core domain models
+**Implemented:**
+- RESTful CRUD APIs with FastAPI
+- Async SQLAlchemy with PostgreSQL + pgvector
+- Structured logging with request correlation
+- Comprehensive test coverage
+- Code quality automation (ruff, mypy, pre-commit)
 
 ---
 
@@ -43,6 +42,7 @@ This assistant helps IT operations teams by:
 | **Cache** | Redis 7.4 |
 | **AI/LLM** | LangChain, LangGraph, OpenAI |
 | **Package Manager** | uv |
+| **Logging** | structlog (structured JSON logging with request correlation) |
 | **Code Quality** | Ruff, mypy, pytest |
 
 ---
@@ -110,9 +110,6 @@ incident-intel/
 │   ├── unit/                 # Unit tests
 │   ├── integration/          # Integration tests
 │   └── evals/                # LLM evaluation tests
-├── .internal/                # Internal documentation (not committed)
-│   ├── project_context/      # Project planning and context
-│   └── setup_workflow/       # Setup guides and workflows
 ├── docker-compose.yml        # Local development infrastructure
 ├── pyproject.toml            # Project dependencies and configuration
 └── README.md                 # This file
@@ -189,15 +186,6 @@ uv run alembic revision --autogenerate -m "description"
 
 ---
 
-## 📚 Documentation
-
-- **Setup Guide:** `.internal/setup_workflow/project-initialization.md`
-- **Docker Guide:** `.internal/setup_workflow/docker-setup.md`
-- **Implementation Plan:** `.internal/project_context/IMPLEMENTATION_PLAN.md`
-- **AI Context:** `.internal/project_context/ai-context.md`
-
----
-
 ## 🧪 Testing
 
 ```bash
@@ -210,7 +198,17 @@ uv run pytest --cov=src/ --cov-report=html
 # Run specific test file
 uv run pytest tests/unit/test_example.py
 ```
+### Test Database
 
+Tests use a separate PostgreSQL database to avoid affecting development data.
+
+**Default:** `postgresql+asyncpg://postgres:postgres@localhost:5432/incident_intel_test`
+
+This database is automatically created/destroyed by the test suite. No manual setup required if you're using the default Docker Compose configuration.
+
+To use a different test database, set `TEST_DATABASE_URL` in your `.env.local` (not committed):
+```bash
+TEST_DATABASE_URL=postgresql+asyncpg://user:pass@host:port/testdb
 ---
 
 ## 🚀 Deployment

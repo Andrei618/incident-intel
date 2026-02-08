@@ -31,8 +31,8 @@ class QuerySource(Base):
 
     __tablename__ = "query_sources"
     __table_args__ = (
-        UniqueConstraint("query_log_id", "chunk_id"),
-        UniqueConstraint("query_log_id", "rank"),
+        UniqueConstraint("query_log_id", "chunk_id", name="uq_query_sources_query_log_chunk"),
+        UniqueConstraint("query_log_id", "rank", name="uq_query_sources_query_log_rank"),
     )
 
     id: Mapped[int] = mapped_column(
