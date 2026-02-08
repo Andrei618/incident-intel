@@ -198,7 +198,17 @@ uv run pytest --cov=src/ --cov-report=html
 # Run specific test file
 uv run pytest tests/unit/test_example.py
 ```
+### Test Database
 
+Tests use a separate PostgreSQL database to avoid affecting development data.
+
+**Default:** `postgresql+asyncpg://postgres:postgres@localhost:5432/incident_intel_test`
+
+This database is automatically created/destroyed by the test suite. No manual setup required if you're using the default Docker Compose configuration.
+
+To use a different test database, set `TEST_DATABASE_URL` in your `.env.local` (not committed):
+```bash
+TEST_DATABASE_URL=postgresql+asyncpg://user:pass@host:port/testdb
 ---
 
 ## 🚀 Deployment
