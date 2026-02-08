@@ -44,6 +44,7 @@ async def create_ticket(
 
     try:
         await session.commit()
+        await session.refresh(new_ticket)  # Reload to get the generated ID
         logger.info("ticket_created", ticket_id=str(new_ticket.id))
     except IntegrityError as e:
         await session.rollback()
@@ -71,7 +72,6 @@ async def create_ticket(
                 detail="Invalid data: constraint violation",
             ) from e
 
-    await session.refresh(new_ticket)
     return new_ticket
 
 
@@ -136,6 +136,9 @@ async def update_ticket(
 
     # Apply business logic for resolved_at
     if "status" in update_dict:
+        # TODO(II-031): Re-resolving a ticket keeps the original resolved_at
+        # instead of updating to the new resolution time. Fix when refactoring
+        # to domain exceptions.
         if update_dict["status"] in [TicketStatus.RESOLVED, TicketStatus.CLOSED]:
             # Auto-set resolved_at when closing
             if ticket.resolved_at is None:
@@ -163,6 +166,8 @@ async def update_ticket(
         )
         logger.debug("ticket_update_failed_detail", error=error_msg)
 
+        # TODO(II-031): This FK check is unreachable — TicketUpdate schema
+        # doesn't include service_id. Remove when refactoring to domain exceptions.
         if "fk_tickets_service_id_services" in error_msg:
             service_id = update_dict.get("service_id", "unknown")
             raise HTTPException(

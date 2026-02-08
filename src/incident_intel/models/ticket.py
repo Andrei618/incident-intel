@@ -8,7 +8,18 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, Uuid, func, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    Uuid,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from incident_intel.models.base import Base, TimestampMixin
@@ -21,10 +32,10 @@ if TYPE_CHECKING:
 class TicketStatus(enum.Enum):
     """Valid ticket statuses."""
 
-    OPEN = "open"
-    IN_PROGRESS = "in_progress"
-    RESOLVED = "resolved"
-    CLOSED = "closed"
+    OPEN = "OPEN"
+    IN_PROGRESS = "IN_PROGRESS"
+    RESOLVED = "RESOLVED"
+    CLOSED = "CLOSED"
 
 
 class TicketPriority(enum.Enum):
@@ -48,8 +59,8 @@ class Ticket(Base, TimestampMixin):
         Index("ix_tickets_created", "created_at"),
         # Business rule: resolved_at must align with status
         CheckConstraint(
-            "(resolved_at IS NULL AND status IN ('open', 'in_progress')) OR "
-            "(resolved_at IS NOT NULL AND status IN ('resolved', 'closed'))",
+            "(resolved_at IS NULL AND status IN ('OPEN', 'IN_PROGRESS')) OR "
+            "(resolved_at IS NOT NULL AND status IN ('RESOLVED', 'CLOSED'))",
             name="resolved_requires_status",
         ),
     )
@@ -68,8 +79,15 @@ class Ticket(Base, TimestampMixin):
     )
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, default=None)
-    status: Mapped[TicketStatus] = mapped_column(default=TicketStatus.OPEN, index=True)
-    priority: Mapped[TicketPriority] = mapped_column(index=True)
+    status: Mapped[TicketStatus] = mapped_column(
+        Enum(TicketStatus, native_enum=True, name="ticketstatus"),
+        default=TicketStatus.OPEN,
+        index=True,
+    )
+    priority: Mapped[TicketPriority] = mapped_column(
+        Enum(TicketPriority, native_enum=True, name="ticketpriority"),
+        index=True,
+    )
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         default=None,
