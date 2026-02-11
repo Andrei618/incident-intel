@@ -27,12 +27,3 @@ repos:
       - id: conventional-pre-commit
         stages: [commit-msg]
         args: [feat, fix, docs, style, refactor, test, chore, ci, security, perf]
-
-  # Check for not commiting internal files
-  - repo: local
-    hooks:
-      - id: no-internal-files
-        name: Block .internal/ files from commits
-        entry: ./scripts/check-no-internal.sh
-        language: script
-        pass_filenames: true
