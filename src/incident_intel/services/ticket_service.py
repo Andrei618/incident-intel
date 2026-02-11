@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import ColumnElement
 
 from incident_intel.core.logging import get_logger
+from incident_intel.exceptions import ServiceNotFoundError, TicketNotFoundError
 from incident_intel.models.ticket import Ticket, TicketPriority, TicketStatus
 from incident_intel.schemas.ticket import TicketCreate, TicketUpdate
 
@@ -30,7 +31,8 @@ async def create_ticket(
         Created ticket with generated ID and timestamps.
 
     Raises:
-        HTTPException: 400 if service_id doesn't exist or data violates constraints.
+        ServiceNotFoundError: If service_id does not exist.
+        HTTPException: 400 if data violates business rule constraints.
     """
     # Production-safe: identifiers only, no PII
     logger.info("ticket_creating", service_id=str(data.service_id))
@@ -57,10 +59,7 @@ async def create_ticket(
         logger.debug("ticket_creation_failed_detail", error=str(e))
 
         if "fk_tickets_service_id_services" in error_msg:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Service with ID {data.service_id} does not exist",
-            ) from e
+            raise ServiceNotFoundError(data.service_id) from e
         elif "ck_" in error_msg or "resolved_requires_status" in error_msg:
             raise HTTPException(
                 status_code=400,
@@ -89,7 +88,7 @@ async def get_ticket(
         The requested ticket.
 
     Raises:
-        HTTPException: 404 if ticket not found.
+        TicketNotFoundError: If ticket does not exist.
     """
     logger.debug("ticket_fetching", ticket_id=str(ticket_id))
 
@@ -100,10 +99,7 @@ async def get_ticket(
     # Handle not found
     if ticket is None:
         logger.warning("ticket_not_found", ticket_id=str(ticket_id))
-        raise HTTPException(
-            status_code=404,
-            detail=f"Ticket {ticket_id} not found",
-        )
+        raise TicketNotFoundError(ticket_id)
 
     logger.debug("ticket_found", ticket_id=str(ticket_id))
     return ticket
@@ -123,9 +119,10 @@ async def update_ticket(
         Updated ticket.
 
     Raises:
-        HTTPException: 404 if ticket not found.
+        TicketNotFoundError: If ticket does not exist.
+        HTTPException: 400 if data violates business rule constraints.
     """
-    # Get existing ticket (raises 404 if not found)
+    # Get existing ticket (raises TicketNotFoundError if not found)
     ticket = await get_ticket(session, ticket_id)
 
     # Get only the fields that were provided
@@ -166,15 +163,7 @@ async def update_ticket(
         )
         logger.debug("ticket_update_failed_detail", error=error_msg)
 
-        # TODO(II-031): This FK check is unreachable — TicketUpdate schema
-        # doesn't include service_id. Remove when refactoring to domain exceptions.
-        if "fk_tickets_service_id_services" in error_msg:
-            service_id = update_dict.get("service_id", "unknown")
-            raise HTTPException(
-                status_code=400,
-                detail=f"Service with ID {service_id} does not exist",
-            ) from e
-        elif "ck_" in error_msg or "resolved_requires_status" in error_msg:
+        if "ck_" in error_msg or "resolved_requires_status" in error_msg:
             raise HTTPException(
                 status_code=400,
                 detail="Data violates business rules (e.g., resolved_at without proper status)",
