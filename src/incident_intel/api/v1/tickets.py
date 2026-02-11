@@ -2,10 +2,11 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from incident_intel.core.database import get_session
+from incident_intel.exceptions import ServiceNotFoundError, TicketNotFoundError
 from incident_intel.models.ticket import Ticket, TicketPriority, TicketStatus
 from incident_intel.schemas.ticket import (
     TicketCreate,
@@ -28,11 +29,18 @@ async def create_ticket_endpoint(
     ticket: TicketCreate,
     session: AsyncSession = Depends(get_session),
 ) -> Ticket:
-    """Create a new ticket."""
-    return await create_ticket(
-        data=ticket,
-        session=session,
-    )
+    """Create a new ticket.
+
+    Raises:
+        HTTPException(400) if service_id not found: FK constraint violation.
+    """
+    try:
+        return await create_ticket(
+            data=ticket,
+            session=session,
+        )
+    except ServiceNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/{ticket_id}", response_model=TicketResponse)
@@ -40,11 +48,18 @@ async def get_ticket_endpoint(
     ticket_id: UUID,
     session: AsyncSession = Depends(get_session),
 ) -> Ticket:
-    """Get ticket by ID."""
-    return await get_ticket(
-        ticket_id=ticket_id,
-        session=session,
-    )
+    """Get ticket by ID.
+
+    Raises:
+        HTTPException(404) if ticket not found.
+    """
+    try:
+        return await get_ticket(
+            ticket_id=ticket_id,
+            session=session,
+        )
+    except TicketNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.put("/{ticket_id}", response_model=TicketResponse)
@@ -53,12 +68,19 @@ async def update_ticket_endpoint(
     update_data: TicketUpdate,
     session: AsyncSession = Depends(get_session),
 ) -> Ticket:
-    """Update ticket by ID. Accepts partial updates."""
-    return await update_ticket(
-        ticket_id=ticket_id,
-        update_data=update_data,
-        session=session,
-    )
+    """Update ticket by ID. Accepts partial updates.
+
+    Raises:
+        HTTPException(404) if ticket not found.
+    """
+    try:
+        return await update_ticket(
+            ticket_id=ticket_id,
+            update_data=update_data,
+            session=session,
+        )
+    except TicketNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("", response_model=TicketListResponse)

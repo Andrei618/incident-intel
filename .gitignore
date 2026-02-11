@@ -68,3 +68,4 @@ Thumbs.db
 *.sqlite
 *.log
 *.code-workspace
+.internal/

@@ -3,9 +3,9 @@
 import uuid
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from incident_intel.exceptions import ServiceNotFoundError, TicketNotFoundError
 from incident_intel.models.service import Service
 from incident_intel.schemas.ticket import (
     TicketCreate,
@@ -38,10 +38,12 @@ async def test_create_ticket_success(test_session: AsyncSession, sample_service:
     assert created_ticket.service_id == sample_service.id
 
 
-async def test_create_ticket_nonexistent_service(test_session: AsyncSession) -> None:
-    """Test ticket service returns correct exception during creating ticket.
+async def test_create_ticket_nonexistent_service_raises_service_not_found(
+    test_session: AsyncSession,
+) -> None:
+    """Test ticket service raises ServiceNotFoundError for nonexistent service.
 
-    Returns 400 exception by creating a ticket if service_id does not exist.
+    Raises ServiceNotFoundError when creating a ticket with invalid service_id.
     """
     # Arrange
     data = TicketCreate(
@@ -50,12 +52,11 @@ async def test_create_ticket_nonexistent_service(test_session: AsyncSession) -> 
         priority=TicketPriority.P1,
     )
     # Act
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ServiceNotFoundError) as exc_info:
         await create_ticket(session=test_session, data=data)
 
     # Assert
-    assert exc_info.value.status_code == 400
-    assert "Service with ID" in exc_info.value.detail
+    assert exc_info.value.service_id == data.service_id
 
 
 async def test_get_ticket_success(test_session: AsyncSession, sample_service: Service) -> None:
@@ -75,21 +76,22 @@ async def test_get_ticket_success(test_session: AsyncSession, sample_service: Se
     assert got_ticket.id == created_ticket.id
 
 
-async def test_get_ticket_nonexistent_ticket(test_session: AsyncSession) -> None:
-    """Test ticket service returns correct exception during getting ticket.
+async def test_get_ticket_nonexistent_ticket_raises_ticket_not_found(
+    test_session: AsyncSession,
+) -> None:
+    """Test ticket service raises TicketNotFoundError for nonexistent ticket.
 
-    Returns 404 exception by getting a ticket if ticket id does not exist.
+    Raises TicketNotFoundError when fetching a ticket that does not exist.
     """
     # Arrange
     nonexistent_id = uuid.uuid4()
 
     # Act
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(TicketNotFoundError) as exc_info:
         await get_ticket(session=test_session, ticket_id=nonexistent_id)
 
     # Assert
-    assert exc_info.value.status_code == 404
-    assert "not found" in exc_info.value.detail
+    assert exc_info.value.ticket_id == nonexistent_id
 
 
 async def test_update_ticket_success(test_session: AsyncSession, sample_service: Service) -> None:
@@ -312,17 +314,19 @@ async def test_update_ticket_status_in_progress_clears_resolved_at(
     assert updated_ticket.resolved_at is None
 
 
-async def test_update_ticket_nonexistent_ticket(test_session: AsyncSession) -> None:
-    """Test ticket service returns correct exception during updating ticket.
+async def test_update_ticket_nonexistent_ticket_raises_ticket_not_found(
+    test_session: AsyncSession,
+) -> None:
+    """Test ticket service raises TicketNotFoundError for nonexistent ticket.
 
-    Returns 404 exception by updating a ticket if ticket not found.
+    Raises TicketNotFoundError when updating a ticket that does not exist.
     """
     # Arrange
     nonexistent_id = uuid.uuid4()
     update_data = TicketUpdate(title="Updated title")
 
     # Act
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(TicketNotFoundError) as exc_info:
         await update_ticket(
             session=test_session,
             ticket_id=nonexistent_id,
@@ -330,8 +334,7 @@ async def test_update_ticket_nonexistent_ticket(test_session: AsyncSession) -> N
         )
 
     # Assert
-    assert exc_info.value.status_code == 404
-    assert "not found" in exc_info.value.detail
+    assert exc_info.value.ticket_id == nonexistent_id
 
 
 async def test_list_tickets_no_filters(test_session: AsyncSession, sample_service: Service) -> None:
