@@ -133,13 +133,9 @@ async def update_ticket(
 
     # Apply business logic for resolved_at
     if "status" in update_dict:
-        # TODO(II-031): Re-resolving a ticket keeps the original resolved_at
-        # instead of updating to the new resolution time. Fix when refactoring
-        # to domain exceptions.
         if update_dict["status"] in [TicketStatus.RESOLVED, TicketStatus.CLOSED]:
-            # Auto-set resolved_at when closing
-            if ticket.resolved_at is None:
-                ticket.resolved_at = datetime.now(UTC)
+            # Auto-set resolved_at when resolving or closing
+            ticket.resolved_at = datetime.now(UTC)
         elif update_dict["status"] in [TicketStatus.OPEN, TicketStatus.IN_PROGRESS]:
             # Clear resolved_at when reopening
             ticket.resolved_at = None

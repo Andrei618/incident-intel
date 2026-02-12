@@ -242,13 +242,73 @@ async def test_update_ticket_status_to_resolved_sets_resolved_at(
     assert data["resolved_at"] is not None
 
 
-# TODO(II-031): Add test for reopening resolved ticket (clears resolved_at)
-# Verify ticket_service.py:146-148 - status change to OPEN/IN_PROGRESS clears resolved_at
-# Test: RESOLVED → OPEN, assert resolved_at becomes None
+async def test_update_ticket_status_to_open_clears_resolved_at(
+    client: AsyncClient,
+    sample_ticket: dict,
+) -> None:
+    """PUT /api/v1/tickets/{ticket_id} clears resolved_at when status become OPEN (re-open)."""
+    # Arrange
+    ticket_id = sample_ticket["id"]
+    assert sample_ticket["resolved_at"] is None
 
-# TODO(II-031): Add test for CLOSED status setting resolved_at
-# Verify ticket_service.py:142 - CLOSED also sets resolved_at (currently only RESOLVED tested)
-# Test: OPEN → CLOSED, assert resolved_at is set
+    # Act 1
+    response_1 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "RESOLVED"})
+    assert response_1.status_code == status.HTTP_200_OK
+
+    # Act 2
+    response_2 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "OPEN"})
+
+    # Assert
+    assert response_2.status_code == status.HTTP_200_OK
+    data = response_2.json()
+    assert data["status"] == "OPEN"
+    assert data["resolved_at"] is None
+
+
+async def test_update_ticket_status_closed_sets_resolved_at(
+    client: AsyncClient,
+    sample_ticket: dict,
+) -> None:
+    """PUT /api/v1/tickets/{ticket_id} sets resolved_at when status becomes CLOSED."""
+    # Arrange
+    ticket_id = sample_ticket["id"]
+    assert sample_ticket["resolved_at"] is None
+
+    # Act
+    response = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "CLOSED"})
+
+    # Assert
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["status"] == "CLOSED"
+    assert data["resolved_at"] is not None
+
+
+async def test_update_ticket_status_to_resolved_again_updates_resolved_at(
+    client: AsyncClient,
+    sample_ticket: dict,
+) -> None:
+    """PUT /api/v1/tickets/{ticket_id} updates resolved_at when status become RESOLVED again."""
+    # Arrange
+    ticket_id = sample_ticket["id"]
+    assert sample_ticket["resolved_at"] is None
+
+    # Act 1
+    response_1 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "RESOLVED"})
+    assert response_1.status_code == status.HTTP_200_OK
+    data_1 = response_1.json()
+    resolved_at_1 = data_1["resolved_at"]
+
+    # Act 2
+    response_2 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "RESOLVED"})
+
+    # Assert
+    assert response_2.status_code == status.HTTP_200_OK
+    data_2 = response_2.json()
+    resolved_at_2 = data_2["resolved_at"]
+    assert data_2["status"] == "RESOLVED"
+    assert data_2["resolved_at"] is not None
+    assert resolved_at_2 != resolved_at_1
 
 
 async def test_update_ticket_invalid_uuid_returns_422(
@@ -369,7 +429,7 @@ async def test_get_ticket_list_filter_by_service_id(
 ) -> None:
     """GET /api/v1/tickets filters tickets by service_id."""
     # Arrange
-    # Create a second service
+    # Create a second service (first service we get from sample_service)
     service_b = Service(name="service-b", description="Second service")
     test_session.add(service_b)
     await test_session.commit()
@@ -422,10 +482,11 @@ async def test_get_ticket_list_pagination_works(
             },
         )
         assert response.status_code == status.HTTP_201_CREATED
+
     # Act 1 - first page
     response = await client.get("/api/v1/tickets?limit=1&offset=0")
 
-    # Assert
+    # Assert 1
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert len(data["items"]) == 1
@@ -443,9 +504,34 @@ async def test_get_ticket_list_pagination_works(
     assert data_2["items"][0]["id"] != data["items"][0]["id"]
 
 
-# TODO(II-031): Add test verifying pagination ordering contract
-# Verify ticket_service.py:236 - results ordered by created_at desc, id desc
-# Test: Create tickets with known timestamps, verify first page returns newest first
+async def test_get_ticket_list_ordering_by_created_at_desc(
+    client: AsyncClient,
+    sample_service: Service,
+) -> None:
+    """GET /api/v1/tickets returns tickets ordered by created_at desc, id desc."""
+    # Arrange - create 3 tickets and save their data
+    tickets = []
+    for title in ["Ticket A", "Ticket B", "Ticket C"]:
+        response = await client.post(
+            "/api/v1/tickets",
+            json={
+                "service_id": str(sample_service.id),
+                "title": title,
+                "priority": "P1",
+            },
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        tickets.append(response.json())
+
+    # Act
+    response = await client.get("/api/v1/tickets")
+
+    # Assert
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    items = data["items"]
+    assert items[0]["created_at"] >= items[1]["created_at"]
+    assert items[1]["created_at"] >= items[2]["created_at"]
 
 
 async def test_get_ticket_list_empty_returns_empty_items(
