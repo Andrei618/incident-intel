@@ -93,6 +93,7 @@ class TicketResponse(BaseModel):
     assignee: str | None
     reporter: str | None
 
+    # When Pydantic serializes to JSON, it converts datetime → ISO 8601 string
     model_config = ConfigDict(from_attributes=True)  # Enables ORM conversion
 
 
