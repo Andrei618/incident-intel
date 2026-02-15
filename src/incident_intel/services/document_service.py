@@ -256,3 +256,32 @@ async def list_documents(
     )
 
     return documents, total
+
+
+async def delete_document(
+    session: AsyncSession,
+    document_id: UUID,
+) -> None:
+    """Delete document by ID.
+
+    Args:
+        session: Active database session.
+        document_id: UUID of the document to delete.
+
+    Raises:
+        DocumentNotFoundError: If document does not exist.
+
+    Note:
+        Sprint 2: Basic delete (removes document only).
+        Sprint 3 TODO: Cleanup document_chunks when chunking is implemented.
+    """
+    logger.info("document_deleting", document_id=str(document_id))
+
+    # Verify document exists (raises DocumentNotFoundError if not found)
+    document = await get_document(session, document_id)
+
+    # Delete document
+    await session.delete(document)
+    await session.commit()
+
+    logger.info("document_deleted", document_id=str(document_id))
