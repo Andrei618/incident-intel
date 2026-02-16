@@ -30,13 +30,13 @@ if TYPE_CHECKING:
 EMBEDDING_DIMENSION = 1536
 
 
-class DocType(enum.Enum):
+class DocType(str, enum.Enum):
     """Document types."""
 
-    RUNBOOK = "runbook"
-    POLICY = "policy"
-    GUIDE = "guide"
-    FAQ = "faq"
+    RUNBOOK = "RUNBOOK"
+    POLICY = "POLICY"
+    GUIDE = "GUIDE"
+    FAQ = "FAQ"
 
 
 class Document(Base, TimestampMixin):
@@ -49,7 +49,7 @@ class Document(Base, TimestampMixin):
     __tablename__ = "documents"
     __table_args__ = (
         CheckConstraint(
-            "doc_type IN ('runbook', 'policy', 'guide', 'faq')",
+            "doc_type IN ('RUNBOOK', 'POLICY', 'GUIDE', 'FAQ')",
             name="valid_doc_type",
         ),
     )
