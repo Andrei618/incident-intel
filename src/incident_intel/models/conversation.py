@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from incident_intel.models.review import PendingReview
 
 
-class MessageRole(enum.Enum):
+class MessageRole(str, enum.Enum):
     """Roles of message authors."""
 
     USER = "user"
@@ -109,7 +109,7 @@ class Message(Base):
             native_enum=False,
             validate_strings=True,
             create_constraint=False,
-            length=20,
+            values_callable=lambda enum: [e.value for e in enum],
         ),
     )
     content: Mapped[str] = mapped_column(Text)

@@ -17,7 +17,7 @@ async def test_create_ticket_return_201(client: AsyncClient, sample_service: Ser
         "service_id": str(sample_service.id),
         "title": "Database connection timeout",
         "description": "Cannot connect to production database",
-        "priority": "P1",
+        "priority": "p1",
     }
 
     # Act
@@ -29,8 +29,8 @@ async def test_create_ticket_return_201(client: AsyncClient, sample_service: Ser
     assert data["service_id"] == str(sample_service.id)
     assert data["title"] == "Database connection timeout"
     assert data["description"] == "Cannot connect to production database"
-    assert data["priority"] == "P1"
-    assert data["status"] == "OPEN"
+    assert data["priority"] == "p1"
+    assert data["status"] == "open"
     uuid.UUID(data["id"])  # Validates "id" has a valid UUID format
     assert "created_at" in data
 
@@ -44,7 +44,7 @@ async def test_create_ticket_with_invalid_service_id_returns_400(
         "service_id": str(uuid.uuid4()),
         "title": "Database connection timeout",
         "description": "Cannot connect to production database",
-        "priority": "P1",
+        "priority": "p1",
     }
 
     # Act
@@ -116,7 +116,7 @@ async def test_get_ticket_returns_200(
     data = response.json()
     assert data["id"] == ticket_id
     assert data["title"] == "Test ticket"
-    assert data["priority"] == "P1"
+    assert data["priority"] == "p1"
     assert data["service_id"] == sample_ticket["service_id"]
 
 
@@ -161,7 +161,7 @@ async def test_update_ticket_returns_200(
     payload = {
         "title": "Updated test title",
         "description": "Updated test description",
-        "priority": "P2",
+        "priority": "p2",
         "assignee": "Updated test assignee",
     }
 
@@ -174,10 +174,10 @@ async def test_update_ticket_returns_200(
     # Verify the updated fields changed
     assert data["title"] == "Updated test title"
     assert data["description"] == "Updated test description"
-    assert data["priority"] == "P2"
+    assert data["priority"] == "p2"
     assert data["assignee"] == "Updated test assignee"
     # Verify unchanged fields stayed the same
-    assert data["status"] == "OPEN"
+    assert data["status"] == "open"
     assert data["reporter"] == "Test reporter"
 
 
@@ -200,7 +200,7 @@ async def test_update_ticket_empty_input_returns_unchanchaged_ticket(
     data = response.json()
     assert data["title"] == "Test ticket"
     assert data["description"] == "Sample ticket for integration tests"
-    assert data["priority"] == "P1"
+    assert data["priority"] == "p1"
     assert data["assignee"] == "Test assignee"
     assert data["reporter"] == "Test reporter"
 
@@ -227,18 +227,18 @@ async def test_update_ticket_status_to_resolved_sets_resolved_at(
     client: AsyncClient,
     sample_ticket: dict,
 ) -> None:
-    """PUT /api/v1/tickets/{ticket_id} sets resolved_at when status becomes RESOLVED."""
+    """PUT /api/v1/tickets/{ticket_id} sets resolved_at when status becomes "resolved."""
     # Arrange
     ticket_id = sample_ticket["id"]
     assert sample_ticket["resolved_at"] is None
 
     # Act
-    response = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "RESOLVED"})
+    response = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "resolved"})
 
     # Assert — resolved_at should be auto-set
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
-    assert data["status"] == "RESOLVED"
+    assert data["status"] == "resolved"
     assert data["resolved_at"] is not None
 
 
@@ -246,22 +246,22 @@ async def test_update_ticket_status_to_open_clears_resolved_at(
     client: AsyncClient,
     sample_ticket: dict,
 ) -> None:
-    """PUT /api/v1/tickets/{ticket_id} clears resolved_at when status become OPEN (re-open)."""
+    """PUT /api/v1/tickets/{ticket_id} clears resolved_at when status become "open" (re-open)."""
     # Arrange
     ticket_id = sample_ticket["id"]
     assert sample_ticket["resolved_at"] is None
 
     # Act 1
-    response_1 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "RESOLVED"})
+    response_1 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "resolved"})
     assert response_1.status_code == status.HTTP_200_OK
 
     # Act 2
-    response_2 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "OPEN"})
+    response_2 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "open"})
 
     # Assert
     assert response_2.status_code == status.HTTP_200_OK
     data = response_2.json()
-    assert data["status"] == "OPEN"
+    assert data["status"] == "open"
     assert data["resolved_at"] is None
 
 
@@ -269,18 +269,18 @@ async def test_update_ticket_status_closed_sets_resolved_at(
     client: AsyncClient,
     sample_ticket: dict,
 ) -> None:
-    """PUT /api/v1/tickets/{ticket_id} sets resolved_at when status becomes CLOSED."""
+    """PUT /api/v1/tickets/{ticket_id} sets resolved_at when status becomes "closed"."""
     # Arrange
     ticket_id = sample_ticket["id"]
     assert sample_ticket["resolved_at"] is None
 
     # Act
-    response = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "CLOSED"})
+    response = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "closed"})
 
     # Assert
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
-    assert data["status"] == "CLOSED"
+    assert data["status"] == "closed"
     assert data["resolved_at"] is not None
 
 
@@ -288,25 +288,25 @@ async def test_update_ticket_status_to_resolved_again_updates_resolved_at(
     client: AsyncClient,
     sample_ticket: dict,
 ) -> None:
-    """PUT /api/v1/tickets/{ticket_id} updates resolved_at when status become RESOLVED again."""
+    """PUT /api/v1/tickets/{ticket_id} updates resolved_at when status become "resolved" again."""
     # Arrange
     ticket_id = sample_ticket["id"]
     assert sample_ticket["resolved_at"] is None
 
     # Act 1
-    response_1 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "RESOLVED"})
+    response_1 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "resolved"})
     assert response_1.status_code == status.HTTP_200_OK
     data_1 = response_1.json()
     resolved_at_1 = data_1["resolved_at"]
 
     # Act 2
-    response_2 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "RESOLVED"})
+    response_2 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "resolved"})
 
     # Assert
     assert response_2.status_code == status.HTTP_200_OK
     data_2 = response_2.json()
     resolved_at_2 = data_2["resolved_at"]
-    assert data_2["status"] == "RESOLVED"
+    assert data_2["status"] == "resolved"
     assert data_2["resolved_at"] is not None
     assert resolved_at_2 != resolved_at_1
 
@@ -340,7 +340,7 @@ async def test_get_ticket_list_returns_200(
             json={
                 "service_id": str(sample_service.id),
                 "title": title,
-                "priority": "P1",
+                "priority": "p1",
             },
         )
     # Act
@@ -368,7 +368,7 @@ async def test_get_ticket_list_filter_by_status(
         json={
             "service_id": str(sample_service.id),
             "title": "Ticket A",
-            "priority": "P1",
+            "priority": "p1",
         },
     )
     await client.post(
@@ -376,23 +376,23 @@ async def test_get_ticket_list_filter_by_status(
         json={
             "service_id": str(sample_service.id),
             "title": "Ticket B",
-            "priority": "P1",
+            "priority": "p1",
         },
     )
     assert ticket_a.status_code == status.HTTP_201_CREATED
 
     ticket_a_id = ticket_a.json()["id"]
     # Change status
-    await client.put(f"/api/v1/tickets/{ticket_a_id}", json={"status": "IN_PROGRESS"})
+    await client.put(f"/api/v1/tickets/{ticket_a_id}", json={"status": "in_progress"})
 
     # Act
-    response = await client.get("/api/v1/tickets?status=IN_PROGRESS")
+    response = await client.get("/api/v1/tickets?status=in_progress")
 
     # Assert
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert len(data["items"]) == 1
-    assert data["items"][0]["status"] == "IN_PROGRESS"
+    assert data["items"][0]["status"] == "in_progress"
 
 
 async def test_get_ticket_list_filter_by_priority(
@@ -401,7 +401,7 @@ async def test_get_ticket_list_filter_by_priority(
 ) -> None:
     """GET /api/v1/tickets filters tickets by priority."""
     # Arrange - create 2 tickets
-    for priority in ["P1", "P3"]:
+    for priority in ["p1", "p3"]:
         response = await client.post(
             "/api/v1/tickets",
             json={
@@ -413,13 +413,13 @@ async def test_get_ticket_list_filter_by_priority(
         assert response.status_code == status.HTTP_201_CREATED
 
     # Act
-    response = await client.get("/api/v1/tickets?priority=P1")
+    response = await client.get("/api/v1/tickets?priority=p1")
 
     # Assert
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert len(data["items"]) == 1
-    assert data["items"][0]["priority"] == "P1"
+    assert data["items"][0]["priority"] == "p1"
 
 
 async def test_get_ticket_list_filter_by_service_id(
@@ -443,7 +443,7 @@ async def test_get_ticket_list_filter_by_service_id(
                 sample_service.id
             ),  # with first service (sample_service from fixture)
             "title": "Ticket A",
-            "priority": "P1",
+            "priority": "p1",
         },
     )
     await client.post(
@@ -451,7 +451,7 @@ async def test_get_ticket_list_filter_by_service_id(
         json={
             "service_id": str(service_b.id),  # with second service
             "title": "Ticket B",
-            "priority": "P1",
+            "priority": "p1",
         },
     )
     assert ticket_a.status_code == status.HTTP_201_CREATED
@@ -478,7 +478,7 @@ async def test_get_ticket_list_pagination_works(
             json={
                 "service_id": str(sample_service.id),
                 "title": title,
-                "priority": "P1",
+                "priority": "p1",
             },
         )
         assert response.status_code == status.HTTP_201_CREATED
@@ -517,7 +517,7 @@ async def test_get_ticket_list_ordering_by_created_at_desc(
             json={
                 "service_id": str(sample_service.id),
                 "title": title,
-                "priority": "P1",
+                "priority": "p1",
             },
         )
         assert response.status_code == status.HTTP_201_CREATED

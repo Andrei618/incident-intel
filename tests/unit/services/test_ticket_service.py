@@ -144,9 +144,9 @@ async def test_update_ticket_status_resolved_sets_resolved_at(
     test_session: AsyncSession,
     sample_service: Service,
 ) -> None:
-    """Test ticket service sets resolved time if status is RESOLVED.
+    """Test ticket service sets resolved time if status is "resolved".
 
-    Verifies resolved_at is auto-set on status change to RESOLVED.
+    Verifies resolved_at is auto-set on status change to "resolved".
     """
     # Arrange
     data = TicketCreate(
@@ -178,9 +178,9 @@ async def test_update_ticket_status_closed_sets_resolved_at(
     test_session: AsyncSession,
     sample_service: Service,
 ) -> None:
-    """Test ticket service sets resolved time if status is CLOSED.
+    """Test ticket service sets resolved time if status is "closed".
 
-    Verifies resolved_at is auto-set on status change to CLOSED.
+    Verifies resolved_at is auto-set on status change to "closed".
     """
     # Arrange
     data = TicketCreate(
@@ -212,13 +212,13 @@ async def test_update_ticket_status_open_clears_resolved_at(
     test_session: AsyncSession,
     sample_service: Service,
 ) -> None:
-    """Test ticket service clears resolved time if status is set to OPEN.
+    """Test ticket service clears resolved time if status is set to "open.
 
-    Verifies resolved_at is auto-set on status change to RESOLVED/OPEN.
+    Verifies resolved_at is auto-set on status change to "resolved"/"open".
     Needs the chain of statuses:
-        OPEN (resolved_at is None) ->
-        RESOLVED (resolved_at is not None) ->
-        OPEN again (resolved_at is None).
+        "open" (resolved_at is None) ->
+        "resolved" (resolved_at is not None) ->
+        "open" again (resolved_at is None).
     """
     # Arrange
     data = TicketCreate(
@@ -226,14 +226,14 @@ async def test_update_ticket_status_open_clears_resolved_at(
         title="Test",
         priority=TicketPriority.P1,
     )
-    # status default - OPEN
+    # status default - "open"
     created_ticket = await create_ticket(session=test_session, data=data)
 
     # Verify initial state
     assert created_ticket.status == TicketStatus.OPEN
     assert created_ticket.resolved_at is None
 
-    # status - RESOLVED
+    # status - "resolved"
     update_data = TicketUpdate(status=TicketStatus.RESOLVED)
 
     # Act 1
@@ -247,7 +247,7 @@ async def test_update_ticket_status_open_clears_resolved_at(
     assert updated_ticket.status == TicketStatus.RESOLVED
     assert updated_ticket.resolved_at is not None
 
-    # status - OPEN
+    # status - "open"
     update_data = TicketUpdate(status=TicketStatus.OPEN)
 
     # Act 2
@@ -266,13 +266,13 @@ async def test_update_ticket_status_in_progress_clears_resolved_at(
     test_session: AsyncSession,
     sample_service: Service,
 ) -> None:
-    """Test ticket service clears resolved time if status is set to IN_PROGRESS.
+    """Test ticket service clears resolved time if status is set to "in_progress".
 
-    Verifies resolved_at is auto-set on status change to RESOLVED/IN_PROGRESS.
+    Verifies resolved_at is auto-set on status change to "resolved"/"in_progress".
     Needs the chain of statuses:
-        OPEN (resolved_at is None) ->
-        RESOLVED (resolved_at is not None) ->
-        IN_PROGRESS (resolved_at is None).
+        "open" (resolved_at is None) ->
+        "resolved" (resolved_at is not None) ->
+        "in_progress" (resolved_at is None).
     """
     # Arrange
     data = TicketCreate(
@@ -280,14 +280,14 @@ async def test_update_ticket_status_in_progress_clears_resolved_at(
         title="Test",
         priority=TicketPriority.P1,
     )
-    # status default - OPEN
+    # status default - "open"
     created_ticket = await create_ticket(session=test_session, data=data)
 
     # Verify initial state
     assert created_ticket.status == TicketStatus.OPEN
     assert created_ticket.resolved_at is None
 
-    # status - RESOLVED
+    # status - "resolved"
     update_data = TicketUpdate(status=TicketStatus.RESOLVED)
 
     # Act 1
@@ -301,7 +301,7 @@ async def test_update_ticket_status_in_progress_clears_resolved_at(
     assert updated_ticket.status == TicketStatus.RESOLVED
     assert updated_ticket.resolved_at is not None
 
-    # status - OPEN
+    # status - "open"
     update_data = TicketUpdate(status=TicketStatus.IN_PROGRESS)
 
     # Act 2
@@ -383,7 +383,7 @@ async def test_list_tickets_filter_by_status(
     await create_ticket(session=test_session, data=data_1)
     created_ticket_2 = await create_ticket(session=test_session, data=data_2)
 
-    # - change status of second ticket to RESOLVED
+    # - change status of second ticket to "resolved"
     update_data = TicketUpdate(status=TicketStatus.RESOLVED)
     await update_ticket(
         session=test_session,
