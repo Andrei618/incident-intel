@@ -1,6 +1,7 @@
 """Integration tests for document API."""
 
 import uuid
+from typing import Any
 
 from fastapi import status
 from httpx import AsyncClient
@@ -106,7 +107,7 @@ async def test_create_document_invalid_doc_type_return_422(
 # ============== GET DOCUMENT ===================
 async def test_get_document_success_return_200(
     client: AsyncClient,
-    sample_document: dict,
+    sample_document: dict[str, Any],
 ) -> None:
     """GET api/v1/documents/{document_id} gets existing document and returns 200."""
     # Arrange
@@ -161,7 +162,7 @@ async def test_get_document_invalid_uuid_returns_422(
 # ============== UPDATE DOCUMENT ===================
 async def test_update_document_success_return_200(
     client: AsyncClient,
-    sample_document: dict,
+    sample_document: dict[str, Any],
 ) -> None:
     """PUT api/v1/documents/{document_id} update existing document and returns 200."""
     # Arrange
@@ -188,7 +189,7 @@ async def test_update_document_success_return_200(
 
 async def test_update_document_empty_input_return_unchanged_document(
     client: AsyncClient,
-    sample_document: dict,
+    sample_document: dict[str, Any],
 ) -> None:
     """PUT api/v1/documents/{document_id} updates with empty input does not change document."""
     # Arrange
@@ -207,7 +208,7 @@ async def test_update_document_empty_input_return_unchanged_document(
 
 async def test_update_document_non_existing_returns_404(
     client: AsyncClient,
-    sample_document: dict,
+    sample_document: dict[str, Any],
 ) -> None:
     """PUT api/v1/documents/{document_id} update non-existing document returns 404."""
     # Arrange
@@ -226,7 +227,7 @@ async def test_update_document_non_existing_returns_404(
 
 async def test_update_document_invalid_service_id_returns_400(
     client: AsyncClient,
-    sample_document: dict,
+    sample_document: dict[str, Any],
 ) -> None:
     """PUT api/v1/documents/{document_id} update with invalid service ID returns 400."""
     # Arrange
@@ -445,7 +446,7 @@ async def test_get_document_list_empty_returns_empty_items(
 # ============== DELETE DOCUMENT ===================
 async def test_delete_document_returns_204(
     client: AsyncClient,
-    sample_document: dict,
+    sample_document: dict[str, Any],
 ) -> None:
     """DELETE /api/v1/documents/{document_id} deletes existing document and returns 204."""
     # Arrange

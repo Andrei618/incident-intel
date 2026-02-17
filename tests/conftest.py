@@ -2,6 +2,7 @@
 
 import os
 from collections.abc import AsyncGenerator
+from typing import Any
 
 import pytest
 from fastapi import status
@@ -125,7 +126,7 @@ async def client(
 async def sample_ticket(
     client: AsyncClient,
     sample_service: Service,
-) -> dict:
+) -> dict[str, Any]:
     """Create a sample ticket for testing GET/UPDATE/DELETE operations.
 
     Returns the created ticket as a dict (JSON response from POST).
@@ -140,14 +141,14 @@ async def sample_ticket(
     }
     response = await client.post("/api/v1/tickets", json=payload)
     assert response.status_code == status.HTTP_201_CREATED
-    return response.json()
+    return response.json()  # type: ignore[no-any-return]
 
 
 @pytest.fixture
 async def sample_document(
     client: AsyncClient,
     sample_service: Service,
-) -> dict:
+) -> dict[str, Any]:
     """Create a sample document for testing GET/UPDATE/DELETE operations.
 
     Returns:
@@ -161,4 +162,4 @@ async def sample_document(
     }
     response = await client.post("/api/v1/documents", json=payload)
     assert response.status_code == status.HTTP_201_CREATED
-    return response.json()
+    return response.json()  # type: ignore[no-any-return]

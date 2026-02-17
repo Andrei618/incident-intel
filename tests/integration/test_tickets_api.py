@@ -1,6 +1,7 @@
 """Integration tests for ticket API."""
 
 import uuid
+from typing import Any
 
 from fastapi import status
 from httpx import AsyncClient
@@ -102,7 +103,7 @@ async def test_create_ticket_invalid_priority_returns_422(
 # ============== GET TICKET ===================
 async def test_get_ticket_returns_200(
     client: AsyncClient,
-    sample_ticket: dict,
+    sample_ticket: dict[str, Any],
 ) -> None:
     """GET /api/v1/tickets/{ticket_id} gets existing ticket and returns 200."""
     # Arrange
@@ -152,7 +153,7 @@ async def test_get_ticket_invalid_uuid_returns_422(
 # ============== UPDATE TICKET ===================
 async def test_update_ticket_returns_200(
     client: AsyncClient,
-    sample_ticket: dict,
+    sample_ticket: dict[str, Any],
 ) -> None:
     """PUT /api/v1/tickets/{ticket_id} updates ticket and returns 200."""
     # Arrange
@@ -183,7 +184,7 @@ async def test_update_ticket_returns_200(
 
 async def test_update_ticket_empty_input_returns_unchanchaged_ticket(
     client: AsyncClient,
-    sample_ticket: dict,
+    sample_ticket: dict[str, Any],
 ) -> None:
     """PUT /api/v1/tickets/{ticket_id} updates ticket with empty input does not change ticket.
 
@@ -225,7 +226,7 @@ async def test_update_ticket_non_existing_ticket_returns_404(
 
 async def test_update_ticket_status_to_resolved_sets_resolved_at(
     client: AsyncClient,
-    sample_ticket: dict,
+    sample_ticket: dict[str, Any],
 ) -> None:
     """PUT /api/v1/tickets/{ticket_id} sets resolved_at when status becomes "resolved."""
     # Arrange
@@ -244,7 +245,7 @@ async def test_update_ticket_status_to_resolved_sets_resolved_at(
 
 async def test_update_ticket_status_to_open_clears_resolved_at(
     client: AsyncClient,
-    sample_ticket: dict,
+    sample_ticket: dict[str, Any],
 ) -> None:
     """PUT /api/v1/tickets/{ticket_id} clears resolved_at when status become "open" (re-open)."""
     # Arrange
@@ -267,7 +268,7 @@ async def test_update_ticket_status_to_open_clears_resolved_at(
 
 async def test_update_ticket_status_closed_sets_resolved_at(
     client: AsyncClient,
-    sample_ticket: dict,
+    sample_ticket: dict[str, Any],
 ) -> None:
     """PUT /api/v1/tickets/{ticket_id} sets resolved_at when status becomes "closed"."""
     # Arrange
@@ -286,7 +287,7 @@ async def test_update_ticket_status_closed_sets_resolved_at(
 
 async def test_update_ticket_status_to_resolved_again_updates_resolved_at(
     client: AsyncClient,
-    sample_ticket: dict,
+    sample_ticket: dict[str, Any],
 ) -> None:
     """PUT /api/v1/tickets/{ticket_id} updates resolved_at when status become "resolved" again."""
     # Arrange
