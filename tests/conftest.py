@@ -141,3 +141,24 @@ async def sample_ticket(
     response = await client.post("/api/v1/tickets", json=payload)
     assert response.status_code == status.HTTP_201_CREATED
     return response.json()
+
+
+@pytest.fixture
+async def sample_document(
+    client: AsyncClient,
+    sample_service: Service,
+) -> dict:
+    """Create a sample document for testing GET/UPDATE/DELETE operations.
+
+    Returns:
+        Created document as a dict (JSON response from POST).
+    """
+    payload = {
+        "service_id": str(sample_service.id),
+        "title": "Test document",
+        "content": "Test content",
+        "doc_type": "runbook",
+    }
+    response = await client.post("/api/v1/documents", json=payload)
+    assert response.status_code == status.HTTP_201_CREATED
+    return response.json()

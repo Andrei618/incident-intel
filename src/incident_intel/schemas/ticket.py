@@ -17,7 +17,6 @@ class TicketCreate(BaseModel):
     )
     title: str = Field(
         ...,
-        min_length=1,
         max_length=255,
         description="Ticket title",
     )
@@ -50,7 +49,6 @@ class TicketUpdate(BaseModel):
 
     title: str | None = Field(
         None,
-        min_length=1,
         max_length=255,
         description="Ticket title",
     )

@@ -38,3 +38,16 @@ class ServiceNotFoundError(DomainError):
         """
         self.service_id = service_id
         super().__init__(f"Service {service_id} not found")
+
+
+class DocumentNotFoundError(DomainError):
+    """Exception raised when a document ID does not exist in the database."""
+
+    def __init__(self, document_id: UUID) -> None:
+        """Exception when document ID not found.
+
+        API layer can access document ID stored in this exception:
+        >>> except DocumentNotFoundError as e: ... e.document_id
+        """
+        self.document_id = document_id
+        super().__init__(f"Document {document_id} not found")
