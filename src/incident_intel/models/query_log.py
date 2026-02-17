@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from incident_intel.models.query_source import QuerySource
 
 
-class Route(enum.Enum):
+class Route(str, enum.Enum):
     """Routes of app used by API."""
 
     SQL = "sql"
@@ -65,7 +65,7 @@ class QueryLog(Base):
             native_enum=False,
             validate_strings=True,
             create_constraint=False,
-            length=20,
+            values_callable=lambda enum: [e.value for e in enum],
         ),
         index=True,
     )

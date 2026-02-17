@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
-    Enum,
     ForeignKey,
     Index,
     String,
@@ -20,31 +19,32 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from incident_intel.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from incident_intel.models.service import Service
-    from incident_intel.models.ticket_documents import TicketDocument
+    from incident_intel.models.ticket_document import TicketDocument
 
 
-class TicketStatus(enum.Enum):
+class TicketStatus(str, enum.Enum):
     """Valid ticket statuses."""
 
-    OPEN = "OPEN"
-    IN_PROGRESS = "IN_PROGRESS"
-    RESOLVED = "RESOLVED"
-    CLOSED = "CLOSED"
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+    CLOSED = "closed"
 
 
-class TicketPriority(enum.Enum):
+class TicketPriority(str, enum.Enum):
     """Ticket priority levels with SLA implications."""
 
-    P1 = "P1"
-    P2 = "P2"
-    P3 = "P3"
-    P4 = "P4"
+    P1 = "p1"
+    P2 = "p2"
+    P3 = "p3"
+    P4 = "p4"
 
 
 class Ticket(Base, TimestampMixin):
@@ -59,8 +59,8 @@ class Ticket(Base, TimestampMixin):
         Index("ix_tickets_created", "created_at"),
         # Business rule: resolved_at must align with status
         CheckConstraint(
-            "(resolved_at IS NULL AND status IN ('OPEN', 'IN_PROGRESS')) OR "
-            "(resolved_at IS NOT NULL AND status IN ('RESOLVED', 'CLOSED'))",
+            "(resolved_at IS NULL AND status IN ('open', 'in_progress')) OR "
+            "(resolved_at IS NOT NULL AND status IN ('resolved', 'closed'))",
             name="resolved_requires_status",
         ),
     )
@@ -80,12 +80,24 @@ class Ticket(Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, default=None)
     status: Mapped[TicketStatus] = mapped_column(
-        Enum(TicketStatus, native_enum=True, name="ticketstatus"),
+        SQLEnum(
+            TicketStatus,
+            native_enum=False,
+            validate_strings=True,
+            create_constraint=False,
+            values_callable=lambda enum: [e.value for e in enum],
+        ),
         default=TicketStatus.OPEN,
         index=True,
     )
     priority: Mapped[TicketPriority] = mapped_column(
-        Enum(TicketPriority, native_enum=True, name="ticketpriority"),
+        SQLEnum(
+            TicketPriority,
+            native_enum=False,
+            validate_strings=True,
+            create_constraint=False,
+            values_callable=lambda enum: [e.value for e in enum],
+        ),
         index=True,
     )
     resolved_at: Mapped[datetime | None] = mapped_column(

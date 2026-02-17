@@ -134,7 +134,7 @@ async def sample_ticket(
         "service_id": str(sample_service.id),
         "title": "Test ticket",
         "description": "Sample ticket for integration tests",
-        "priority": "P1",
+        "priority": "p1",
         "assignee": "Test assignee",
         "reporter": "Test reporter",
     }
