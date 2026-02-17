@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from incident_intel.models.conversation import Conversation
 
 
-class ReviewStatus(enum.Enum):
+class ReviewStatus(str, enum.Enum):
     """Status of a pending review."""
 
     PENDING = "pending"
@@ -77,7 +77,7 @@ class PendingReview(Base):
             native_enum=False,
             validate_strings=True,
             create_constraint=False,
-            length=20,
+            values_callable=lambda enum: [e.value for e in enum],
         ),
         default=ReviewStatus.PENDING,
         index=True,

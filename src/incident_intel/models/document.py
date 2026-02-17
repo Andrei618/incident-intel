@@ -49,7 +49,7 @@ class Document(Base, TimestampMixin):
     __tablename__ = "documents"
     __table_args__ = (
         CheckConstraint(
-            "doc_type IN ('RUNBOOK', 'POLICY', 'GUIDE', 'FAQ')",
+            "doc_type IN ('runbook', 'policy', 'guide', 'faq')",
             name="valid_doc_type",
         ),
     )
@@ -73,8 +73,8 @@ class Document(Base, TimestampMixin):
             DocType,
             native_enum=False,
             validate_strings=True,
-            # to prevent auto-creation of a CHECK constraint by SQLEnum (we already have CheckConstraint)
             create_constraint=False,
+            values_callable=lambda enum: [e.value for e in enum],
         ),
     )
 
