@@ -7,10 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from incident_intel.exceptions import ServiceNotFoundError, TicketNotFoundError
 from incident_intel.models.service import Service
+from incident_intel.models.ticket import TicketPriority, TicketStatus
 from incident_intel.schemas.ticket import (
     TicketCreate,
-    TicketPriority,
-    TicketStatus,
     TicketUpdate,
 )
 from incident_intel.services.ticket_service import (
@@ -21,6 +20,7 @@ from incident_intel.services.ticket_service import (
 )
 
 
+# ============== create_ticket ===================
 async def test_create_ticket_success(test_session: AsyncSession, sample_service: Service) -> None:
     """Test ticket service can create a ticket."""
     # Arrange
@@ -59,6 +59,7 @@ async def test_create_ticket_nonexistent_service_raises_service_not_found(
     assert exc_info.value.service_id == data.service_id
 
 
+# ============== get_ticket ===================
 async def test_get_ticket_success(test_session: AsyncSession, sample_service: Service) -> None:
     """Test ticket service can get existing ticket."""
     # Arrange
@@ -94,6 +95,7 @@ async def test_get_ticket_nonexistent_ticket_raises_ticket_not_found(
     assert exc_info.value.ticket_id == nonexistent_id
 
 
+# ============== update_ticket ===================
 async def test_update_ticket_success(test_session: AsyncSession, sample_service: Service) -> None:
     """Test ticket service can update ticket."""
     # Arrange
@@ -317,10 +319,7 @@ async def test_update_ticket_status_in_progress_clears_resolved_at(
 async def test_update_ticket_nonexistent_ticket_raises_ticket_not_found(
     test_session: AsyncSession,
 ) -> None:
-    """Test ticket service raises TicketNotFoundError for nonexistent ticket.
-
-    Raises TicketNotFoundError when updating a ticket that does not exist.
-    """
+    """Test ticket service raises TicketNotFoundError for nonexistent ticket."""
     # Arrange
     nonexistent_id = uuid.uuid4()
     update_data = TicketUpdate(title="Updated title")
@@ -337,6 +336,7 @@ async def test_update_ticket_nonexistent_ticket_raises_ticket_not_found(
     assert exc_info.value.ticket_id == nonexistent_id
 
 
+# ============== list_ticket ===================
 async def test_list_tickets_no_filters(test_session: AsyncSession, sample_service: Service) -> None:
     """Test ticket service can return list of all existing tickets.
 

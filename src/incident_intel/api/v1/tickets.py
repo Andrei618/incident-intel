@@ -1,4 +1,4 @@
-"""API route functions."""
+"""API endpoints for ticket management."""
 
 from uuid import UUID
 

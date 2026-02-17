@@ -60,6 +60,9 @@ async def create_ticket(
 
         if "fk_tickets_service_id_services" in error_msg:
             raise ServiceNotFoundError(data.service_id) from e
+
+        # TODO Replace all HTTPExceptions with domain exceptions in service layer.
+        # Related issue - #16.
         elif "ck_" in error_msg or "resolved_requires_status" in error_msg:
             raise HTTPException(
                 status_code=400,
@@ -130,6 +133,12 @@ async def update_ticket(
     if not update_dict:
         return ticket
     logger.info("ticket_updating", ticket_id=str(ticket_id), fields=list(update_dict.keys()))
+    logger.debug(
+        "ticket_updating_detail",
+        ticket_id=str(ticket_id),
+        fields=list(update_dict.keys()),
+        title=update_dict.get("title"),
+    )
 
     # Apply business logic for resolved_at
     if "status" in update_dict:
@@ -147,6 +156,7 @@ async def update_ticket(
     # Commit with error handling
     try:
         await session.commit()
+        await session.refresh(ticket)
         logger.info("ticket_updated", ticket_id=str(ticket_id))
     except IntegrityError as e:
         await session.rollback()
@@ -170,7 +180,6 @@ async def update_ticket(
                 detail="Invalid data: constraint violation",
             ) from e
 
-    await session.refresh(ticket)
     return ticket
 
 

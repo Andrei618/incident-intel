@@ -9,7 +9,7 @@ load_dotenv()
 from fastapi import FastAPI  # noqa: E402, I001 //E402: import not at top, I001: import block is unsorted
 
 from incident_intel.api import health  # noqa: E402
-from incident_intel.api.v1 import tickets  # noqa: E402
+from incident_intel.api.v1 import documents, tickets  # noqa: E402
 from incident_intel.core.logging import configure_logging  # noqa: E402
 from incident_intel.middleware.request_id import RequestIDMiddleware  # noqa: E402
 
@@ -28,3 +28,4 @@ app.add_middleware(RequestIDMiddleware)
 
 app.include_router(health.router)
 app.include_router(tickets.router, prefix="/api/v1")
+app.include_router(documents.router, prefix="/api/v1")
