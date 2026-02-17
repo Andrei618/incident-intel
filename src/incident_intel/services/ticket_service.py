@@ -3,14 +3,17 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import ColumnElement
 
 from incident_intel.core.logging import get_logger
-from incident_intel.exceptions import ServiceNotFoundError, TicketNotFoundError
+from incident_intel.exceptions import (
+    BusinessRuleViolationError,
+    ServiceNotFoundError,
+    TicketNotFoundError,
+)
 from incident_intel.models.ticket import Ticket, TicketPriority, TicketStatus
 from incident_intel.schemas.ticket import TicketCreate, TicketUpdate
 
@@ -32,7 +35,7 @@ async def create_ticket(
 
     Raises:
         ServiceNotFoundError: If service_id does not exist.
-        HTTPException: 400 if data violates business rule constraints.
+        BusinessRuleViolationError: If business rule violated.
     """
     # Production-safe: identifiers only, no PII
     logger.info("ticket_creating", service_id=str(data.service_id))
@@ -61,18 +64,12 @@ async def create_ticket(
         if "fk_tickets_service_id_services" in error_msg:
             raise ServiceNotFoundError(data.service_id) from e
 
-        # TODO Replace all HTTPExceptions with domain exceptions in service layer.
-        # Related issue - #16.
         elif "ck_" in error_msg or "resolved_requires_status" in error_msg:
-            raise HTTPException(
-                status_code=400,
-                detail="Data violates business rules (e.g., resolved_at without proper status)",
+            raise BusinessRuleViolationError(
+                "Business rule violated: resolved_at can only be set when status is 'resolved' or 'closed'",
             ) from e
         else:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid data: constraint violation",
-            ) from e
+            raise
 
     return new_ticket
 
@@ -123,7 +120,7 @@ async def update_ticket(
 
     Raises:
         TicketNotFoundError: If ticket does not exist.
-        HTTPException: 400 if data violates business rule constraints.
+        BusinessRuleViolationError: If business rule violated.
     """
     # Get existing ticket (raises TicketNotFoundError if not found)
     ticket = await get_ticket(session, ticket_id)
@@ -170,15 +167,11 @@ async def update_ticket(
         logger.debug("ticket_update_failed_detail", error=error_msg)
 
         if "ck_" in error_msg or "resolved_requires_status" in error_msg:
-            raise HTTPException(
-                status_code=400,
-                detail="Data violates business rules (e.g., resolved_at without proper status)",
+            raise BusinessRuleViolationError(
+                "Business rule violated: resolved_at can only be set when status is 'resolved' or 'closed'",
             ) from e
         else:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid data: constraint violation",
-            ) from e
+            raise
 
     return ticket
 

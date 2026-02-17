@@ -6,7 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from incident_intel.core.database import get_session
-from incident_intel.exceptions import ServiceNotFoundError, TicketNotFoundError
+from incident_intel.exceptions import (
+    BusinessRuleViolationError,
+    ServiceNotFoundError,
+    TicketNotFoundError,
+)
 from incident_intel.models.ticket import Ticket, TicketPriority, TicketStatus
 from incident_intel.schemas.ticket import (
     TicketCreate,
@@ -33,6 +37,7 @@ async def create_ticket_endpoint(
 
     Raises:
         HTTPException(400) if service_id not found: FK constraint violation.
+        HTTPException(400) if business rules violated.
     """
     try:
         return await create_ticket(
@@ -40,6 +45,8 @@ async def create_ticket_endpoint(
             session=session,
         )
     except ServiceNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except BusinessRuleViolationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
@@ -72,6 +79,7 @@ async def update_ticket_endpoint(
 
     Raises:
         HTTPException(404) if ticket not found.
+        HTTPException(400) if business rules violated.
     """
     try:
         return await update_ticket(
@@ -81,6 +89,8 @@ async def update_ticket_endpoint(
         )
     except TicketNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    except BusinessRuleViolationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("", response_model=TicketListResponse)
