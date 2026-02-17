@@ -51,3 +51,15 @@ class DocumentNotFoundError(DomainError):
         """
         self.document_id = document_id
         super().__init__(f"Document {document_id} not found")
+
+
+class BusinessRuleViolationError(DomainError):
+    """Exception raised when business rules are violated."""
+
+    def __init__(self, message: str) -> None:
+        """Exception when data violates business rules.
+
+        API layer can access message stored in this exception:
+        >>> except BusinessRuleViolationError as e: ... str(e)
+        """
+        super().__init__(message)

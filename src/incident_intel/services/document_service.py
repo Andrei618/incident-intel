@@ -2,7 +2,6 @@
 
 from uuid import UUID
 
-from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +30,6 @@ async def create_document(
 
     Raises:
         ServiceNotFoundError: If service_id does not exist.
-        HTTPException: 400 if data violate business rules constraints.
     """
     # Production-safe: identifiers only, no PII
     logger.info(
@@ -75,13 +73,8 @@ async def create_document(
                 ) from e
             raise ServiceNotFoundError(data.service_id) from e
 
-        # TODO Replace all HTTPExceptions with domain exceptions in service layer.
-        # Related issue - #16.
         else:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid data: constraint violation",
-            ) from e
+            raise
 
     return new_document
 
@@ -132,7 +125,6 @@ async def update_document(
 
     Raises:
         DocumentNotFoundError: If document does not exist.
-        HTTPException: 400 if data violates business rules constraints.
     """
     # Get existing document
     document = await get_document(session, document_id)
@@ -183,13 +175,8 @@ async def update_document(
                     "FK constraint violation with None service_id - this should never happen"
                 ) from e
             raise ServiceNotFoundError(update_data.service_id) from e
-        # TODO Replace all HTTPExceptions with domain exceptions in service layer.
-        # Related issue - #16.
         else:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid data: constraint violation",
-            ) from e
+            raise
 
     return document
 
