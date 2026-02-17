@@ -17,7 +17,9 @@ class DocumentCreate(BaseModel):
     """
 
     service_id: UUID | None = Field(
-        None, description="UUID of the IT-service this document related to"
+        None,
+        description="UUID of the IT-service this document related to",
+        examples=[None],
     )
     title: str = Field(
         ...,
@@ -26,7 +28,9 @@ class DocumentCreate(BaseModel):
     )
     content: str = Field(..., description="Content of the document")
     doc_type: DocType = Field(
-        ..., description="Document type", examples=["runbook", "policy", "guide", "faq"]
+        ...,
+        description="Document type",
+        examples=["runbook", "policy", "guide", "faq"],
     )
 
 
@@ -39,7 +43,9 @@ class DocumentUpdate(BaseModel):
     """
 
     service_id: UUID | None = Field(
-        None, description="UUID of the IT-service this document related to"
+        None,
+        description="UUID of the IT-service this document related to",
+        examples=[None],
     )
     title: str | None = Field(
         None,
@@ -52,7 +58,9 @@ class DocumentUpdate(BaseModel):
         description="Content of the document",
     )
     doc_type: DocType | None = Field(
-        None, description="Document type", examples=["runbook", "policy", "guide", "faq"]
+        None,
+        description="Document type",
+        examples=["runbook", "policy", "guide", "faq"],
     )
 
 
