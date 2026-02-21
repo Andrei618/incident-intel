@@ -3,6 +3,7 @@
 import os
 from collections.abc import AsyncGenerator
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from fastapi import status
@@ -163,3 +164,17 @@ async def sample_document(
     response = await client.post("/api/v1/documents", json=payload)
     assert response.status_code == status.HTTP_201_CREATED
     return response.json()  # type: ignore[no-any-return]
+
+
+@pytest.fixture(autouse=True)
+def mock_create_embeddings():
+    """Mock OpenAI embeddings to avoid real API calls in tests."""
+
+    async def fake_embeddings(texts: list[str]) -> list[list[float]]:
+        return [[0.1] * 1536 for _ in texts]
+
+    with patch(
+        "incident_intel.services.document_service.create_embeddings",
+        side_effect=fake_embeddings,
+    ) as mock:
+        yield mock
