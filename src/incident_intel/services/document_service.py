@@ -9,8 +9,9 @@ from sqlalchemy.sql.expression import ColumnElement
 
 from incident_intel.core.logging import get_logger
 from incident_intel.exceptions import DocumentNotFoundError, ServiceNotFoundError
-from incident_intel.models.document import DocType, Document
+from incident_intel.models.document import DocType, Document, DocumentChunk
 from incident_intel.schemas.document import DocumentCreate, DocumentUpdate
+from incident_intel.services.embedding_service import chunk_text, create_embeddings
 
 logger = get_logger(__name__)
 
@@ -19,7 +20,7 @@ async def create_document(
     session: AsyncSession,
     data: DocumentCreate,
 ) -> Document:
-    """Create a new document.
+    """Create a new document, document chunks and embeddings.
 
     Args:
         session: Active database session.
@@ -51,9 +52,35 @@ async def create_document(
     session.add(new_document)
 
     try:
-        await session.commit()
+        # NOTE: Transaction held open during OpenAI call (~1-2s).
+        # Acceptable for low-concurrency internal tool.
+        # For high-throughput: consider background task queue (Celery/ARQ).
+        await session.flush()
         await session.refresh(new_document)  # Reload to get the generated ID
         logger.info("document_created", document_id=str(new_document.id))
+
+        chunks: list[str] = chunk_text(new_document.content)
+
+        embeddings: list[list[float]] = await create_embeddings(chunks)
+
+        logger.info(
+            "document_chunks_creating",
+            chunk_count=len(chunks),
+            embeddings_count=len(embeddings),
+        )
+        for index, (chunk, embedding) in enumerate(zip(chunks, embeddings, strict=True)):
+            new_document_chunk = DocumentChunk(
+                document_id=new_document.id,
+                content=chunk,
+                embedding=embedding,
+                chunk_index=index,
+            )
+            session.add(new_document_chunk)
+
+        await session.commit()
+        await session.refresh(new_document)
+        logger.info("document_chunks_created", chunk_count=len(chunks))
+
     except IntegrityError as e:
         await session.rollback()
         error_msg = str(e.orig)
@@ -75,6 +102,9 @@ async def create_document(
 
         else:
             raise
+    except Exception:
+        await session.rollback()
+        raise
 
     return new_document
 
@@ -152,9 +182,37 @@ async def update_document(
 
     # Commit with error handling
     try:
-        await session.commit()
+        # NOTE: Transaction held open during OpenAI call (~1-2s).
+        # Acceptable for low-concurrency internal tool.
+        # For high-throughput: consider background task queue (Celery/ARQ).
+        await session.flush()
         await session.refresh(document)
         logger.info("document_updated", document_id=str(document_id))
+
+        if "content" in update_dict:
+            document.document_chunks.clear()  # Marks the old chunks (orphans) for deletion
+            await session.flush()  # Delete old chunks: clear relationship
+
+            chunks: list[str] = chunk_text(document.content)
+            embeddings: list[list[float]] = await create_embeddings(chunks)
+
+            logger.info(
+                "document_chunks_creating",
+                chunk_count=len(chunks),
+                embeddings_count=len(embeddings),
+            )
+            for index, (chunk, embedding) in enumerate(zip(chunks, embeddings, strict=True)):
+                document_chunk = DocumentChunk(
+                    document_id=document.id,
+                    content=chunk,
+                    embedding=embedding,
+                    chunk_index=index,
+                )
+                session.add(document_chunk)
+            logger.info("document_chunks_created", chunk_count=len(chunks))  # here - correct?
+
+        await session.commit()
+        await session.refresh(document)
 
     except IntegrityError as e:
         await session.rollback()
@@ -177,6 +235,9 @@ async def update_document(
             raise ServiceNotFoundError(update_data.service_id) from e
         else:
             raise
+    except Exception:
+        await session.rollback()
+        raise
 
     return document
 

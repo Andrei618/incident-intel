@@ -64,7 +64,6 @@ async def test_create_document_with_invalid_serice_id_returns_400(
 
 async def test_create_document_missing_required_fields_return_422(
     client: AsyncClient,
-    sample_service: Service,
 ) -> None:
     """POST /api/v1/documents without required fields returns 422."""
     # Arrange
@@ -84,7 +83,6 @@ async def test_create_document_missing_required_fields_return_422(
 
 async def test_create_document_invalid_doc_type_return_422(
     client: AsyncClient,
-    sample_service: Service,
 ) -> None:
     """POST /api/v1/documents created document and returns 201."""
     # Arrange
@@ -208,7 +206,6 @@ async def test_update_document_empty_input_return_unchanged_document(
 
 async def test_update_document_non_existing_returns_404(
     client: AsyncClient,
-    sample_document: dict[str, Any],
 ) -> None:
     """PUT api/v1/documents/{document_id} update non-existing document returns 404."""
     # Arrange
@@ -322,7 +319,6 @@ async def test_get_document_list_filter_by_service_id(
 
 async def test_get_document_list_filter_by_doc_type(
     client: AsyncClient,
-    sample_service: Service,
 ) -> None:
     """GET /api/v1/documents filters documents by doc_type."""
     # Arrange

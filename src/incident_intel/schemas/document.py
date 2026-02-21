@@ -26,7 +26,11 @@ class DocumentCreate(BaseModel):
         max_length=255,
         description="Document title",
     )
-    content: str = Field(..., description="Content of the document")
+    content: str = Field(
+        ...,
+        min_length=1,
+        description="Content of the document",
+    )
     doc_type: DocType = Field(
         ...,
         description="Document type",
@@ -54,7 +58,7 @@ class DocumentUpdate(BaseModel):
     )
     content: str | None = Field(
         None,
-        min_length=1,  # ?
+        min_length=1,
         description="Content of the document",
     )
     doc_type: DocType | None = Field(
