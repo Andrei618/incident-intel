@@ -1,8 +1,16 @@
 """Pydantic schema for search in documents."""
 
+from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
+
+
+class Method(str, Enum):
+    """Enum for method query parameter."""
+
+    KEYWORD = "keyword"
+    VECTOR = "vector"
 
 
 class SearchResultItem(BaseModel):
@@ -24,9 +32,10 @@ class SearchResultItem(BaseModel):
 class SearchResponse(BaseModel):
     """Response schema for top-level representation of chunk list.
 
-    Includes items, query, total.
+    Includes items, query, total, method.
     """
 
     items: list[SearchResultItem]
     query: str
     total: int
+    method: Method

@@ -173,8 +173,14 @@ def mock_create_embeddings():
     async def fake_embeddings(texts: list[str]) -> list[list[float]]:
         return [[0.1] * 1536 for _ in texts]
 
-    with patch(
-        "incident_intel.services.document_service.create_embeddings",
-        side_effect=fake_embeddings,
-    ) as mock:
+    with (
+        patch(
+            "incident_intel.services.document_service.create_embeddings",
+            side_effect=fake_embeddings,
+        ),
+        patch(
+            "incident_intel.services.search_service.create_embeddings",
+            side_effect=fake_embeddings,
+        ) as mock,
+    ):
         yield mock

@@ -1,92 +1,37 @@
 """Integration tests for document search."""
 
+from unittest.mock import patch
 from uuid import UUID
 
 from fastapi import status
 from httpx import AsyncClient
 
 
-async def test_search_returns_matching_chunks(
-    client: AsyncClient,
-) -> None:
-    """GET /api/v1/search?q=kubernetes finds matching chunks and returns 200."""
-    # Arrange
-    payload = {
-        "title": "Test document",
-        "content": "Kubernetes pod crash loop",
-        "doc_type": "runbook",
-    }
-    response_create = await client.post("/api/v1/documents", json=payload)
-    assert response_create.status_code == status.HTTP_201_CREATED
+# Custom embeddings for testing vector search
+async def custom_embeddings(texts: list[str]) -> list[list[float]]:
+    """Override the mock fixture (mock_create_embeddings) to receive different embeddings.
 
-    # Act
-    response = await client.get("/api/v1/search?q=kubernetes")
-
-    # Assert
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert data["total"] >= 1
-    assert UUID(data["items"][0]["chunk_id"])
-    assert UUID(data["items"][0]["document_id"])
-    assert data["items"][0]["document_title"] == "Test document"
-    assert "kubernetes" in data["items"][0]["content"].lower()
-    assert data["items"][0]["chunk_index"] == 0
-    assert data["items"][0]["score"] > 0
+    Example:
+        When search for something like "server connection issues"
+        (no keyword match to either, hits the else branch)
+        — result vector [0.85, 0.1, ...] is closer to the "networking" vector [0.9, 0.1, ...]
+        than the "database" vector [0.1, 0.9, ...]
+    """
+    results = []
+    for text in texts:
+        if "networking" in text.lower():
+            # Vector A: [0.9, 0.1, 0.1, ...]
+            results.append([0.9] + [0.1] * 1535)
+        elif "database" in text.lower():
+            # Vector B: [0.1, 0.9, 0.1, ...]
+            results.append([0.1, 0.9] + [0.1] * 1534)
+        else:
+            # Query vector — close to "networking" vector
+            results.append([0.85] + [0.1] * 1535)
+    return results
 
 
-async def test_search_returns_empty_for_no_matches(
-    client: AsyncClient,
-) -> None:
-    """GET /api/v1/search?q=quantum physics returns empty response and 200."""
-    # Arrange
-    payload = {
-        "title": "Test document",
-        "content": "Kubernetes pod crash loop",
-        "doc_type": "runbook",
-    }
-    response_create = await client.post("/api/v1/documents", json=payload)
-    assert response_create.status_code == status.HTTP_201_CREATED
-
-    # Act
-    response = await client.get("/api/v1/search?q=quantum physics")
-
-    # Assert
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert data["total"] == 0
-
-
-async def test_search_respects_limit(
-    client: AsyncClient,
-) -> None:
-    """GET /api/v1/search?q=...&limit=... returns one or less results and 200."""
-    # Arrange
-    contents = (
-        "Kubernetes pod crash loop 1",
-        "Kubernetes pod crash loop 2",
-        "Kubernetes pod crash loop 3",
-    )
-
-    for content in contents:
-        response_create = await client.post(
-            "/api/v1/documents",
-            json={
-                "title": "Test document",
-                "content": content,
-                "doc_type": "runbook",
-            },
-        )
-        assert response_create.status_code == status.HTTP_201_CREATED
-
-    # Act
-    response = await client.get("/api/v1/search?q=kubernetes&limit=1")
-
-    # Assert
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert len(data["items"]) == 1
-
-
+# ============== shared validation ===================
 async def test_search_missing_query_422(
     client: AsyncClient,
 ) -> None:
@@ -113,10 +58,93 @@ async def test_search_empty_query_422(
     assert "detail" in data
 
 
-async def test_search_results_ordered_by_score(
+# ============== keyword_search ===================
+async def test_keyword_search_returns_matching_chunks(
     client: AsyncClient,
 ) -> None:
-    """GET /api/v1/search?q=database result with more mentions of keyword has higher score."""
+    """GET /api/v1/search?q=...&method=keyword finds matching chunks and returns 200."""
+    # Arrange
+    payload = {
+        "title": "Test document",
+        "content": "Kubernetes pod crash loop",
+        "doc_type": "runbook",
+    }
+    response_create = await client.post("/api/v1/documents", json=payload)
+    assert response_create.status_code == status.HTTP_201_CREATED
+
+    # Act
+    response = await client.get("/api/v1/search?q=kubernetes&method=keyword")
+
+    # Assert
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["total"] >= 1
+    assert UUID(data["items"][0]["chunk_id"])
+    assert UUID(data["items"][0]["document_id"])
+    assert data["items"][0]["document_title"] == "Test document"
+    assert "kubernetes" in data["items"][0]["content"].lower()
+    assert data["items"][0]["chunk_index"] == 0
+    assert data["items"][0]["score"] > 0
+    assert data["method"] == "keyword"
+
+
+async def test_keyword_search_returns_empty_for_no_matches(
+    client: AsyncClient,
+) -> None:
+    """GET /api/v1/search?q=...&method=keyword (no matched query) returns empty response and 200."""
+    # Arrange
+    payload = {
+        "title": "Test document",
+        "content": "Kubernetes pod crash loop",
+        "doc_type": "runbook",
+    }
+    response_create = await client.post("/api/v1/documents", json=payload)
+    assert response_create.status_code == status.HTTP_201_CREATED
+
+    # Act
+    response = await client.get("/api/v1/search?q=quantum physics&method=keyword")
+
+    # Assert
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["total"] == 0
+
+
+async def test_keyword_search_respects_limit(
+    client: AsyncClient,
+) -> None:
+    """GET /api/v1/search?q=...&limit=...&method=keyword returns one or less results and 200."""
+    # Arrange
+    contents = (
+        "Kubernetes pod crash loop 1",
+        "Kubernetes pod crash loop 2",
+        "Kubernetes pod crash loop 3",
+    )
+
+    for content in contents:
+        response_create = await client.post(
+            "/api/v1/documents",
+            json={
+                "title": "Test document",
+                "content": content,
+                "doc_type": "runbook",
+            },
+        )
+        assert response_create.status_code == status.HTTP_201_CREATED
+
+    # Act
+    response = await client.get("/api/v1/search?q=kubernetes&limit=1&method=keyword")
+
+    # Assert
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert len(data["items"]) == 1
+
+
+async def test_keyword_search_results_ordered_by_score(
+    client: AsyncClient,
+) -> None:
+    """GET /api/v1/search?q=...&method=keyword result with more mentions of keyword has higher score."""
     # Arrange
     contents = (
         "database database database database database",
@@ -135,10 +163,144 @@ async def test_search_results_ordered_by_score(
         assert response_create.status_code == status.HTTP_201_CREATED
 
     # Act
-    response = await client.get("/api/v1/search?q=database")
+    response = await client.get("/api/v1/search?q=database&method=keyword")
 
     # Assert
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert len(data["items"]) >= 2
+    assert data["items"][0]["score"] > data["items"][1]["score"]
+
+
+# ============== vector_search ===================
+async def test_vector_search_returns_matching_chunks(
+    client: AsyncClient,
+) -> None:
+    """GET /api/v1/search?q=...&method=vector finds matching chunks and returns 200."""
+    # Arrange
+    payload = {
+        "title": "Test document",
+        "content": "Kubernetes pod crash loop",
+        "doc_type": "runbook",
+    }
+    response_create = await client.post("/api/v1/documents", json=payload)
+    assert response_create.status_code == status.HTTP_201_CREATED
+
+    # Act
+    response = await client.get("/api/v1/search?q=kubernetes&method=vector")
+
+    # Assert
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["total"] >= 1
+    assert data["items"][0]["document_title"] == "Test document"
+    assert data["items"][0]["score"] > 0
+    assert data["method"] == "vector"
+
+
+async def test_vector_search_respects_limit(
+    client: AsyncClient,
+) -> None:
+    """GET /api/v1/search?q=...&limit=...&method=vector returns one or less results and 200."""
+    # Arrange
+    contents = (
+        "Kubernetes pod crash loop 1",
+        "Kubernetes pod crash loop 2",
+        "Kubernetes pod crash loop 3",
+    )
+
+    for content in contents:
+        response_create = await client.post(
+            "/api/v1/documents",
+            json={
+                "title": "Test document",
+                "content": content,
+                "doc_type": "runbook",
+            },
+        )
+        assert response_create.status_code == status.HTTP_201_CREATED
+
+    # Act
+    response = await client.get("/api/v1/search?q=kubernetes&limit=1&method=vector")
+
+    # Assert
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert len(data["items"]) == 1
+
+
+async def test_vector_search_semantic_matches(
+    client: AsyncClient,
+) -> None:
+    """GET /api/v1/search?q=...&method=vector finds matching chunks by semantic and returns 200.
+
+    Vector search finds results even when there are no shared keywords between query and content.
+    """
+    # Arrange
+    payload = {
+        "title": "Test document",
+        "content": "Kubernetes pod restart troubleshooting",
+        "doc_type": "runbook",
+    }
+    response_create = await client.post("/api/v1/documents", json=payload)
+    assert response_create.status_code == status.HTTP_201_CREATED
+
+    # Act
+    response_keyword_search = await client.get("/api/v1/search?q=container&method=keyword")
+    response_vector_search = await client.get("/api/v1/search?q=container&method=vector")
+
+    # Assert
+    # Keyword search
+    assert response_keyword_search.status_code == status.HTTP_200_OK
+    data_keyword_search = response_keyword_search.json()
+    assert data_keyword_search["total"] == 0
+
+    # Vector search
+    assert response_vector_search.status_code == status.HTTP_200_OK
+    data_vector_search = response_vector_search.json()
+    assert data_vector_search["total"] >= 1
+
+
+async def test_vector_search_ranks_by_similarity(
+    client: AsyncClient,
+) -> None:
+    """GET /api/v1/search?q=...&method=vector sorts matching chunks by semantic score and returns 200."""
+    # Arrange
+    with (
+        patch(
+            "incident_intel.services.document_service.create_embeddings",
+            side_effect=custom_embeddings,
+        ),
+        patch(
+            "incident_intel.services.search_service.create_embeddings",
+            side_effect=custom_embeddings,
+        ),
+    ):
+        payload_doc_1 = {
+            "title": "Test document 1",
+            "content": "networking troubleshooting",
+            "doc_type": "runbook",
+        }
+        payload_doc_2 = {
+            "title": "Test document 2",
+            "content": "database optimization",
+            "doc_type": "runbook",
+        }
+
+        response_create_doc_1 = await client.post("/api/v1/documents", json=payload_doc_1)
+        response_create_doc_2 = await client.post("/api/v1/documents", json=payload_doc_2)
+
+        assert response_create_doc_1.status_code == status.HTTP_201_CREATED
+        assert response_create_doc_2.status_code == status.HTTP_201_CREATED
+
+        # Act
+        response_search = await client.get(
+            "/api/v1/search?q=server connection issues&method=vector"
+        )
+
+    # Assert
+    assert response_search.status_code == status.HTTP_200_OK
+    data = response_search.json()
+    assert data["total"] == 2
+    assert data["items"][0]["document_title"] == "Test document 1"
     assert data["items"][0]["score"] > data["items"][1]["score"]
