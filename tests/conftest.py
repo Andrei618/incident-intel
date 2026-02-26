@@ -3,7 +3,7 @@
 import os
 from collections.abc import AsyncGenerator
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import status
@@ -184,3 +184,22 @@ def mock_create_embeddings():
         ) as mock,
     ):
         yield mock
+
+
+@pytest.fixture(autouse=True)
+def mock_redis_client():
+    """Mock Redis client to always response with empty cache.
+
+    Empty cache in response leads to calling embedding for user query (also mocked).
+    """
+    with (
+        patch(
+            "incident_intel.services.search_service.redis_client.get",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "incident_intel.services.search_service.redis_client.set",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        yield
