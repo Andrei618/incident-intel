@@ -1,14 +1,46 @@
 """Service layer for search operations."""
 
+import json
+import os
 from collections.abc import Sequence
 
+from redis import RedisError
 from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from incident_intel.core.logging import get_logger
+from incident_intel.core.redis import redis_client
 from incident_intel.services.embedding_service import create_embeddings
 
 logger = get_logger(__name__)
+
+REDIS_TTL = int(os.getenv("REDIS_TTL", "86400"))
+
+
+async def get_or_create_embeddings(query: str) -> str:
+    """Get embedding of user query from Redis cache if exists, call OpenAI, if not.
+
+    Args:
+        query: user query.
+
+    Returns:
+        Embedding as string (ready for pgvector).
+    """
+    normalized_query = query.lower()
+    try:
+        embedding_redis = await redis_client.get(normalized_query)
+        if embedding_redis:
+            return str(json.loads(embedding_redis))
+        else:
+            embedding = (await create_embeddings([normalized_query]))[0]
+            embedding_redis = json.dumps(embedding)
+            await redis_client.set(normalized_query, embedding_redis, ex=REDIS_TTL)
+            return str(embedding)
+    except RedisError as e:
+        logger.warning("redis_cache_unavailable", action="FALLBACK_TO_OPENAI")
+        logger.debug("redis_cache_error_detail", error=e)
+        embedding = (await create_embeddings([normalized_query]))[0]
+        return str(embedding)
 
 
 async def keyword_search(
@@ -67,7 +99,7 @@ async def vector_search(
         return []
 
     # str() -> pgvector expects the embedding parameter as a string representation of the vector
-    embedding = str((await create_embeddings([query]))[0])
+    embedding = await get_or_create_embeddings(query)
 
     # 1 - cosine_distance = cosine_similarity (higher = more relevant)
     sql = """\
