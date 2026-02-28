@@ -11,6 +11,7 @@ class Method(str, Enum):
 
     KEYWORD = "keyword"
     VECTOR = "vector"
+    HYBRID = "hybrid"
 
 
 class SearchResultItem(BaseModel):

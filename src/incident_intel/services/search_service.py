@@ -1,11 +1,13 @@
 """Service layer for search operations."""
 
+import asyncio
 import json
 import os
-from collections.abc import Sequence
+from typing import Any
+from uuid import UUID
 
 from redis import RedisError
-from sqlalchemy import RowMapping, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from incident_intel.core.logging import get_logger
@@ -15,6 +17,9 @@ from incident_intel.services.embedding_service import create_embeddings
 logger = get_logger(__name__)
 
 REDIS_TTL = int(os.getenv("REDIS_TTL", "86400"))
+
+# Constant for Reciprocal Rank Fusion (RRF) in hybrid_search
+K = 60
 
 
 async def get_or_create_embeddings(query: str) -> str:
@@ -47,7 +52,7 @@ async def keyword_search(
     session: AsyncSession,
     query: str,
     limit: int = 10,
-) -> Sequence[RowMapping]:
+) -> list[dict[str, Any]]:
     """Find list of chunks matching the query.
 
     Args:
@@ -75,14 +80,14 @@ SELECT dc.id, dc.document_id, d.title, dc.content, dc.chunk_index,
     results = response.mappings().all()
     logger.debug("keyword_search_complete", result_count=len(results))
 
-    return results
+    return [dict(row) for row in results]
 
 
 async def vector_search(
     session: AsyncSession,
     query: str,
     limit: int = 10,
-) -> Sequence[RowMapping]:
+) -> list[dict[str, Any]]:
     """Semantic similarity search using pgvector on document chunk embeddings.
 
     Args:
@@ -113,4 +118,42 @@ SELECT dc.id, dc.document_id, d.title, dc.content, dc.chunk_index,
     results = response.mappings().all()
     logger.debug("vector_search_complete", result_count=len(results))
 
-    return results
+    return [dict(row) for row in results]
+
+
+async def hybrid_search(
+    session: AsyncSession,
+    query: str,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    """Hybrid search combining keyword and vector search."""
+    logger.debug("hybrid_search_starting", query=query)
+
+    if query.strip() == "":
+        return []
+
+    chunk_data: dict[UUID, dict[str, Any]] = {}
+
+    keyword_results, vector_results = await asyncio.gather(
+        keyword_search(session=session, query=query, limit=limit),
+        vector_search(session=session, query=query, limit=limit),
+    )
+
+    for results in (keyword_results, vector_results):
+        for rank, row in enumerate(results):
+            chunk_id = row["id"]
+            if chunk_id not in chunk_data:
+                chunk_data[chunk_id] = {
+                    "id": row["id"],
+                    "document_id": row["document_id"],
+                    "title": row["title"],
+                    "content": row["content"],
+                    "chunk_index": row["chunk_index"],
+                    "score": 0.0,
+                }
+            chunk_data[chunk_id]["score"] += 1 / (K + rank + 1)  # +1 because enumerate starts at 0
+
+    final_results = sorted(chunk_data.values(), key=lambda x: x["score"], reverse=True)[:limit]
+    logger.debug("hybrid_search_complete", result_count=len(final_results))
+
+    return final_results

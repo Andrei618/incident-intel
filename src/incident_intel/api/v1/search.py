@@ -1,11 +1,13 @@
 """API endpoints for search in documents."""
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from incident_intel.core.database import get_session
 from incident_intel.schemas.search import Method, SearchResponse, SearchResultItem
-from incident_intel.services.search_service import keyword_search, vector_search
+from incident_intel.services.search_service import hybrid_search, keyword_search, vector_search
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -14,21 +16,17 @@ router = APIRouter(prefix="/search", tags=["search"])
 async def search_endpoint(
     q: str = Query(..., min_length=1, description="Search query"),
     limit: int = Query(10, ge=1, le=50, description="Max amount of search results"),
-    method: Method = Query(Method.KEYWORD, description="Method query parameter"),
+    method: Method = Query(Method.HYBRID, description="Method query parameter"),
     session: AsyncSession = Depends(get_session),
 ) -> SearchResponse:
-    """Search document chunks using keyword or vector similarity."""
-    # Dispatch table to choose search method
-    search_functions = {
-        Method.KEYWORD: keyword_search,
-        Method.VECTOR: vector_search,
-    }
-
-    response = await search_functions[method](
-        session=session,
-        query=q,
-        limit=limit,
-    )
+    """Search document chunks using keyword, vector, or hybrid similarity."""
+    response: list[dict[str, Any]]
+    if method == Method.KEYWORD:
+        response = await keyword_search(session=session, query=q, limit=limit)
+    elif method == Method.VECTOR:
+        response = await vector_search(session=session, query=q, limit=limit)
+    else:
+        response = await hybrid_search(session=session, query=q, limit=limit)
 
     mapped_response = [
         SearchResultItem(
