@@ -100,7 +100,15 @@ class Ticket(Base, TimestampMixin):
         ),
         index=True,
     )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        default=None,
+    )
     resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        default=None,
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         default=None,
     )
