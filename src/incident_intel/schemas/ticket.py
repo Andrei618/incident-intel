@@ -86,8 +86,10 @@ class TicketResponse(BaseModel):
     status: TicketStatus
     priority: TicketPriority
     created_at: datetime
+    started_at: datetime | None
     updated_at: datetime | None
     resolved_at: datetime | None
+    closed_at: datetime | None
     assignee: str | None
     reporter: str | None
 

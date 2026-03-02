@@ -266,23 +266,44 @@ async def test_update_ticket_status_to_open_clears_resolved_at(
     assert data["resolved_at"] is None
 
 
-async def test_update_ticket_status_closed_sets_resolved_at(
+async def test_update_ticket_status_to_in_progress_sets_started_at(
+    client: AsyncClient, sample_ticket: dict[str, Any]
+) -> None:
+    """PUT /api/v1/tickets/{ticket_id} sets started_at when status becomes "in_progress"."""
+    # Arrange
+    ticket_id = sample_ticket["id"]
+    assert sample_ticket["started_at"] is None
+
+    # Act
+    response = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "in_progress"})
+
+    # Assert
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["status"] == "in_progress"
+    assert data["started_at"] is not None
+
+
+async def test_update_ticket_status_closed_sets_closed_at(
     client: AsyncClient,
     sample_ticket: dict[str, Any],
 ) -> None:
-    """PUT /api/v1/tickets/{ticket_id} sets resolved_at when status becomes "closed"."""
+    """PUT /api/v1/tickets/{ticket_id} sets closed_at when status becomes "closed"."""
     # Arrange
     ticket_id = sample_ticket["id"]
-    assert sample_ticket["resolved_at"] is None
+    assert sample_ticket["closed_at"] is None
 
     # Act
-    response = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "closed"})
+    for next_status in ["in_progress", "resolved", "closed"]:
+        response = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": next_status})
 
     # Assert
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert data["status"] == "closed"
+    assert data["started_at"] is not None
     assert data["resolved_at"] is not None
+    assert data["closed_at"] is not None
 
 
 async def test_update_ticket_status_to_resolved_again_updates_resolved_at(

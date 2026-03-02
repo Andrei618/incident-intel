@@ -105,6 +105,28 @@ async def get_ticket(
     return ticket
 
 
+def _apply_lifecycle_timestamps(ticket: Ticket, new_status: TicketStatus) -> None:
+    """Set/clear lifecycle timestamps based on status transition.
+
+    Transition validation (e.g., open -> closed not allowed) is omitted for simplicity.
+    """
+    if new_status == TicketStatus.OPEN:
+        ticket.resolved_at = None
+        ticket.closed_at = None
+    elif new_status == TicketStatus.IN_PROGRESS:
+        if ticket.started_at is None:
+            ticket.started_at = datetime.now(UTC)
+        ticket.resolved_at = None
+        ticket.closed_at = None
+    elif new_status == TicketStatus.RESOLVED:
+        ticket.closed_at = None
+        ticket.resolved_at = datetime.now(UTC)
+    else:
+        if ticket.resolved_at is None:
+            ticket.resolved_at = datetime.now(UTC)
+        ticket.closed_at = datetime.now(UTC)
+
+
 async def update_ticket(
     session: AsyncSession, ticket_id: UUID, update_data: TicketUpdate
 ) -> Ticket:
@@ -137,14 +159,8 @@ async def update_ticket(
         title=update_dict.get("title"),
     )
 
-    # Apply business logic for resolved_at
     if "status" in update_dict:
-        if update_dict["status"] in [TicketStatus.RESOLVED, TicketStatus.CLOSED]:
-            # Auto-set resolved_at when resolving or closing
-            ticket.resolved_at = datetime.now(UTC)
-        elif update_dict["status"] in [TicketStatus.OPEN, TicketStatus.IN_PROGRESS]:
-            # Clear resolved_at when reopening
-            ticket.resolved_at = None
+        _apply_lifecycle_timestamps(ticket, update_dict["status"])
 
     # Update each field
     for field, value in update_dict.items():

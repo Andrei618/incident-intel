@@ -174,13 +174,107 @@ async def test_update_ticket_status_resolved_sets_resolved_at(
     assert updated_ticket.resolved_at is not None
 
 
-async def test_update_ticket_status_closed_sets_resolved_at(
+async def test_update_ticket_status_in_progress_sets_started_at(
     test_session: AsyncSession,
     sample_service: Service,
 ) -> None:
-    """Test ticket service sets resolved time if status is "closed".
+    """Test ticket service sets started time if status is "in_progress".
 
-    Verifies resolved_at is auto-set on status change to "closed".
+    Verifies started_at is auto-set on status change to "in_progress".
+    """
+    # Arrange
+    data = TicketCreate(
+        service_id=sample_service.id,
+        title="Test",
+        priority=TicketPriority.P1,
+    )
+    created_ticket = await create_ticket(session=test_session, data=data)
+
+    # Verify initial state
+    assert created_ticket.status == TicketStatus.OPEN
+    assert created_ticket.started_at is None
+
+    update_data = TicketUpdate(status=TicketStatus.IN_PROGRESS)
+
+    # Act
+    updated_ticket = await update_ticket(
+        session=test_session,
+        ticket_id=created_ticket.id,
+        update_data=update_data,
+    )
+
+    # Assert after updating
+    assert updated_ticket.status == TicketStatus.IN_PROGRESS
+    assert updated_ticket.started_at is not None
+
+
+async def test_update_ticket_started_at_set_only_once(
+    test_session: AsyncSession,
+    sample_service: Service,
+) -> None:
+    """Test ticket service sets start time only once.
+
+    Prevents updating start time if status "in_progress" is set again, start time isn't changed.
+    """
+    # Arrange
+    data = TicketCreate(
+        service_id=sample_service.id,
+        title="Test",
+        priority=TicketPriority.P1,
+    )
+    created_ticket = await create_ticket(session=test_session, data=data)
+
+    # Verify initial state
+    assert created_ticket.status == TicketStatus.OPEN
+    assert created_ticket.started_at is None
+
+    # Change status to "in_progress" for the first time
+    update_data = TicketUpdate(status=TicketStatus.IN_PROGRESS)
+    # Act
+    updated_ticket = await update_ticket(
+        session=test_session,
+        ticket_id=created_ticket.id,
+        update_data=update_data,
+    )
+    # Assert after updating
+    assert updated_ticket.status == TicketStatus.IN_PROGRESS
+    assert updated_ticket.started_at is not None
+
+    # Change status back to "open"
+    update_data = TicketUpdate(status=TicketStatus.OPEN)
+    # Act
+    updated_ticket = await update_ticket(
+        session=test_session,
+        ticket_id=created_ticket.id,
+        update_data=update_data,
+    )
+    # Assert after updating
+    assert updated_ticket.status == TicketStatus.OPEN
+    assert updated_ticket.started_at is not None
+    started_at_1 = updated_ticket.started_at
+
+    # Change status to "in_progress" for the second time
+    update_data = TicketUpdate(status=TicketStatus.IN_PROGRESS)
+    # Act
+    updated_ticket = await update_ticket(
+        session=test_session,
+        ticket_id=created_ticket.id,
+        update_data=update_data,
+    )
+    # Assert after updating
+    assert updated_ticket.status == TicketStatus.IN_PROGRESS
+    assert updated_ticket.started_at is not None
+    started_at_2 = updated_ticket.started_at
+    assert started_at_2 == started_at_1
+
+
+async def test_update_ticket_status_closed_sets_closed_at(
+    test_session: AsyncSession,
+    sample_service: Service,
+) -> None:
+    """Test ticket service sets closed time if status is "closed".
+
+    Verifies closed_at is auto-set on status change to "closed".
     """
     # Arrange
     data = TicketCreate(
@@ -194,18 +288,19 @@ async def test_update_ticket_status_closed_sets_resolved_at(
     assert created_ticket.status == TicketStatus.OPEN
     assert created_ticket.resolved_at is None
 
-    update_data = TicketUpdate(status=TicketStatus.CLOSED)
-
     # Act
-    updated_ticket = await update_ticket(
-        session=test_session,
-        ticket_id=created_ticket.id,
-        update_data=update_data,
-    )
+    for next_status in [TicketStatus.IN_PROGRESS, TicketStatus.RESOLVED, TicketStatus.CLOSED]:
+        updated_ticket = await update_ticket(
+            session=test_session,
+            ticket_id=created_ticket.id,
+            update_data=TicketUpdate(status=next_status),
+        )
 
     # Assert after updating
     assert updated_ticket.status == TicketStatus.CLOSED
+    assert updated_ticket.started_at is not None
     assert updated_ticket.resolved_at is not None
+    assert updated_ticket.closed_at is not None
 
 
 async def test_update_ticket_status_open_clears_resolved_at(
