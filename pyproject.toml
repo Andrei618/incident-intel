@@ -1,0 +1,120 @@
+[project]
+name = "incident-intel"
+version = "0.1.0"
+description = "AI-powered assistant for IT operations teams"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    # Web framework
+    "fastapi>=0.125.0",
+    "uvicorn[standard]>=0.38.0",
+    # Database
+    "sqlalchemy[asyncio]>=2.0.45",
+    "asyncpg>=0.31.0",
+    "alembic>=1.17.2",
+    "pgvector>=0.4.2",
+    # Cache
+    "redis>=7.1.0",
+    # Validation & Config
+    "pydantic>=2.12.4",
+    "pydantic-settings>=2.12.0",
+    # AI/LLM
+    "langchain>=1.2.0",
+    "langchain_community>=0.4.1",
+    "langgraph>=1.0.5",
+    "openai>=2.14.0",
+    # Data generation
+    "faker>=39.0.0",
+    # HTTP client
+    "httpx>=0.28.0",
+    # Utilities
+    "python-dotenv>=1.2.1",
+    "psycopg[binary]>=3.3.2",
+    "structlog>=25.5.0",
+    "tiktoken>=0.12.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors - PEP 8 style violations
+    "F",     # Pyflakes - detects unused imports, undefined variables
+    "I",     # isort - ensures imports are sorted correctly
+    "N",     # pep8-naming - enforces naming conventions (snake_case, CamelCase)
+    "W",     # pycodestyle warnings - less critical style issues
+    "UP",    # pyupgrade - suggests modern Python syntax (3.13+)
+    "B",     # flake8-bugbear - catches subtle bugs and anti-patterns
+    "C90",   # mccabe complexity - warns about overly complex functions
+    "D",     # pydocstyle - enforces docstring conventions
+    "S",     # flake8-bandit (security) - detects security vulnerabilities
+    "ANN",   # flake8-annotations - enforces type hints
+    "ASYNC", # flake8-async - checks async/await best practices
+    "RUF",   # Ruff-specific rules - additional smart checks
+    "PTH",   # flake8-use-pathlib - prefer pathlib over os.path
+]
+ignore = [
+    "B008",   # Allow function calls in argument defaults (FastAPI pattern)
+    "E501",   # Line too long (we use 100-char limit, not 79)
+    "D203",   # 1 blank line before class docstring (conflicts with D211)
+    "D213",   # Multi-line docstring summary on second line (conflicts with D212)
+    "D104",   # Missing docstring in public package (__init__.py files)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",   # Allow assert in tests
+    "ANN001", # Missing type annotation for function argument (for test functions)
+    "ANN201", # Missing return type annotation
+]
+"scripts/*.py" = [
+    "S101",   # Allow assert in scripts
+]
+
+[tool.ruff]
+line-length = 100 # Match E501 ignore
+target-version = "py313"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10  # Functions shouldn't be too complex
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"  # Use Google-style docstrings
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = [
+    "-ra",                    # Show summary of all test outcomes
+    "-q",                     # Quiet mode
+    "--strict-markers",       # Error on unknown markers
+    "--cov=src",              # Coverage for src directory
+    "--cov-report=term-missing",  # Show missing lines
+    "--cov-report=html",      # Generate HTML coverage report
+]
+
+pythonpath = ["src"]  # Add src to Python path for imports
+
+[dependency-groups]
+dev = [
+    # Testing
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.0.0",
+
+    # Code quality
+    "ruff>=0.14.14",
+    "mypy>=1.19.1",
+    "pre-commit>=4.5.1",
+    "types-redis>=4.6.0",
+
+    # CLI output
+    "rich>=14.2.0"
+]

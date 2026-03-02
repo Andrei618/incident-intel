@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+# Cancel outdated runs
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Security: minimal permissions
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: incident_intel_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true  # speed up CI
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Run Ruff (lint)
+        run: uv run ruff check .
+
+      - name: Run Ruff (format check)
+        run: uv run ruff format --check .
+
+      - name: Run mypy
+        run: uv run mypy src/
+
+      - name: Run tests
+        run: uv run pytest
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/incident_intel_test
+          REDIS_URL: redis://localhost:6379
+
+      # TODO: Add coverage threshold (--cov-fail-under=80)
+      # TODO: Separate fast/slow tests (skip slow integration tests in CI)
+        

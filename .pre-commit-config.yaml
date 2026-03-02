@@ -1,0 +1,29 @@
+# Run checks before committing code
+
+repos:
+  # Ruff - Fast Python linter and formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.14
+    hooks:
+      # Run the linter
+      - id: ruff-check
+        args: [--fix]
+      # Run the formatter
+      - id: ruff-format
+  
+  # Mypy - Static type checker
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.19.1
+    hooks:
+      - id: mypy
+        args: [--strict]
+        additional_dependencies: [types-redis, "sqlalchemy[mypy]", pydantic, fastapi, structlog]
+        files: ^src/
+
+  # Conventional Commits - Commit message validation
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.0.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, docs, style, refactor, test, chore, ci, security, perf]
