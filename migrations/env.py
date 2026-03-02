@@ -10,7 +10,9 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
+import sqlalchemy as sa
 from alembic import context
+from alembic.runtime.migration import MigrationContext
 from sqlalchemy import engine_from_config, pool
 
 # Add project root to sys.path for model imports
@@ -28,6 +30,24 @@ if config.config_file_name is not None:
 # Target metadata for autogenerate support
 # Alembic compares this metadata against the database to detect schema changes
 target_metadata = Base.metadata
+
+
+def _compare_type(
+    context: MigrationContext,
+    inspect_column: sa.Column,
+    metadata_column: sa.Column,
+    inspect_type: sa.types.TypeEngine,
+    metadata_type: sa.types.TypeEngine,
+) -> bool | None:
+    """Skip VARCHAR -> Enum false positives during autogenerate.
+
+    When using native_enum=False, SQLAlchemy stores enum values as VARCHAR.
+    Alembic detects a type mismatch (VARCHAR in DB vs Enum in model) and
+    generates unnecessary alter_column operations. Return False to suppress.
+    """
+    if isinstance(inspect_type, sa.VARCHAR) and isinstance(metadata_type, sa.Enum):
+        return False
+    return None  # let Alembic decide for everything else
 
 
 def get_url() -> str:
@@ -81,6 +101,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_type=_compare_type,
     )
 
     with context.begin_transaction():
@@ -107,6 +128,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            compare_type=_compare_type,
         )
 
         with context.begin_transaction():
