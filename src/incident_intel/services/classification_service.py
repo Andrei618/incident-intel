@@ -93,6 +93,10 @@ async def classify_query(query: str) -> QueryIntent:
 
         # Guard: refusal or empty/filtered content
         if message.refusal is not None or message.parsed is None:
+            logger.info(
+                "classification_refusal_or_empty_content",
+                action="FALLBACK_TO_HYBRID",
+            )
             return _build_fallback_intent(query)
 
         intent: QueryIntent = message.parsed
@@ -101,8 +105,16 @@ async def classify_query(query: str) -> QueryIntent:
         if intent.confidence < CONFIDENCE_THRESHOLD and intent.route == "sql":
             intent.route = "hybrid"
             intent.document_query = intent.document_query or query
+            logger.info(
+                "classification_sql_threshold_hit",
+                confidence=intent.confidence,
+                action="FALLBACK_TO_HYBRID",
+            )
 
+        logger.info("classification_complete", route=intent.route, confidence=intent.confidence)
         return intent
 
-    except (openai.OpenAIError, ValidationError):
+    except (openai.OpenAIError, ValidationError) as e:
+        logger.warning("classification_error", action="FALLBACK_TO_HYBRID")
+        logger.debug("classification_error_detail", error=e)
         return _build_fallback_intent(query)

@@ -62,7 +62,7 @@ def _build_where_clause(filters: TicketFilters) -> WhereClause:
 
 
 async def query_tickets(session: AsyncSession, intent: SQLIntent) -> str:
-    """Query tickets based on the right SQL template and return formated results."""
+    """Query tickets based on the right SQL template and return formatted results."""
     where = _build_where_clause(filters=intent.filters)
 
     if intent.action == SqlAction.COUNT:
@@ -72,8 +72,11 @@ async def query_tickets(session: AsyncSession, intent: SQLIntent) -> str:
         else:
             base = "SELECT COUNT(*) FROM tickets t"
             stmt = f"{base} {where.sql}"
+
+        logger.debug("query_tickets_count_starting", action=intent.action.value)
         response = await session.execute(text(stmt), where.params)
         result = response.scalar_one()
+        logger.debug("query_tickets_count_complete", result_count_value=result)
         return _format_count_result(count=result, filters=intent.filters)
     else:
         base_1 = """
@@ -84,8 +87,10 @@ async def query_tickets(session: AsyncSession, intent: SQLIntent) -> str:
         stmt = f"{base_1} {where.sql} {base_2}"
 
         where.params["limit"] = intent.limit
+        logger.debug("query_tickets_list_starting", action=intent.action.value)
         response = await session.execute(text(stmt), where.params)
         result = response.mappings().all()
+        logger.debug("query_tickets_list_complete", result_count=len(result))
         return _format_list_result(rows=result)
 
 
