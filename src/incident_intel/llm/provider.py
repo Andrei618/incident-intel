@@ -20,6 +20,6 @@ class ChatProvider(Protocol):
         """Send a conversation to the provider and return the complete response as a string."""
         ...
 
-    async def generate_stream(self, messages: list[ChatMessage]) -> AsyncIterator[str]:
+    def generate_stream(self, messages: list[ChatMessage]) -> AsyncIterator[str]:
         """Send a conversation to the provider and yield the response piece by piece as strings."""
         ...
