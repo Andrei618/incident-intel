@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 
 
 def _build_messages(context: str, message: str) -> list[ChatMessage]:
-    """Build system prompt for chat."""
+    """Build list of messages for chat from user message and context."""
     system_message_content = f"""\
 You are an IT operations assistant. Answer the user's question using ONLY
 the context provided below. Cite sources by number (e.g., [1], [2]).
