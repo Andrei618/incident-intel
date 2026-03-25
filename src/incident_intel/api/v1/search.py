@@ -26,7 +26,7 @@ async def search_endpoint(
     elif method == Method.VECTOR:
         response = await vector_search(session=session, query=q, limit=limit)
     else:
-        response = await hybrid_search(session=session, query=q, limit=limit)
+        response = await hybrid_search(query=q, limit=limit)
 
     mapped_response = [
         SearchResultItem(
