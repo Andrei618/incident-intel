@@ -10,6 +10,7 @@ from redis import RedisError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from incident_intel.core.database import Session
 from incident_intel.core.logging import get_logger
 from incident_intel.core.redis import redis_client
 from incident_intel.services.embedding_service import create_embeddings
@@ -121,8 +122,19 @@ SELECT dc.id, dc.document_id, d.title, dc.content, dc.chunk_index,
     return [dict(row) for row in results]
 
 
+async def _keyword_with_own_session(query: str, limit: int) -> list[dict[str, Any]]:
+    """Create own session for keyword search."""
+    async with Session() as s:
+        return await keyword_search(session=s, query=query, limit=limit)
+
+
+async def _vector_with_own_session(query: str, limit: int) -> list[dict[str, Any]]:
+    """Create own session for vector search."""
+    async with Session() as s:
+        return await vector_search(session=s, query=query, limit=limit)
+
+
 async def hybrid_search(
-    session: AsyncSession,
     query: str,
     limit: int = 10,
 ) -> list[dict[str, Any]]:
@@ -134,9 +146,10 @@ async def hybrid_search(
 
     chunk_data: dict[UUID, dict[str, Any]] = {}
 
+    # Use two separate sessions, so each concurrent query gets its own connection.
     keyword_results, vector_results = await asyncio.gather(
-        keyword_search(session=session, query=query, limit=limit),
-        vector_search(session=session, query=query, limit=limit),
+        _keyword_with_own_session(query=query, limit=limit),
+        _vector_with_own_session(query=query, limit=limit),
     )
 
     for results in (keyword_results, vector_results):
