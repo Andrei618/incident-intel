@@ -78,7 +78,6 @@ async def test_dispatch_hybrid_route(mock_hybrid_search, mock_query_tickets) -> 
     assert result.route == "hybrid"
 
     mock_hybrid_search.assert_called_once_with(
-        session=test_session,
         query="some search query",
         limit=5,
     )
@@ -154,7 +153,6 @@ async def test_dispatch_hybrid_falls_back_to_original_query(
 
     # Assert
     mock_hybrid_search.assert_called_once_with(
-        session=test_session,
         query="test original query",
         limit=5,
     )

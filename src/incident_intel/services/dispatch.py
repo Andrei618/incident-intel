@@ -40,7 +40,6 @@ async def _hybrid_handler(
 ) -> DispatchResult:
     """Call hybrid search."""
     raw_chunks = await hybrid_search(
-        session=session,
         query=intent.document_query or original_query,
         limit=limit,
     )
