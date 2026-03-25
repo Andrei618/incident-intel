@@ -76,11 +76,13 @@ async def test_get_or_create_embeddings_redis_down_falls_back_to_openai(
 
 
 # ====================== hybrid_search ===========================
+@patch("incident_intel.services.search_service.Session")
 @patch("incident_intel.services.search_service.keyword_search", new_callable=AsyncMock)
 @patch("incident_intel.services.search_service.vector_search", new_callable=AsyncMock)
 async def test_hybrid_search_return_results(
     mock_vector_search,
     mock_keyword_search,
+    mock_session_factory,
 ) -> None:
     """Test hybrid_search return correctly all fields in results."""
     # Arrange
@@ -109,10 +111,12 @@ async def test_hybrid_search_return_results(
             "score": 0.1,
         },
     ]
-    mock_session = AsyncMock()
+    # Mock async context manager in helper functions _keyword_with_own_session and _vector_with_own_session
+    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    mock_session_factory.return_value.__aexit__ = AsyncMock(return_value=None)
 
     # Act
-    results = await hybrid_search(session=mock_session, query="Test query")
+    results = await hybrid_search(query="Test query")
 
     # Assert
     assert len(results) == 2
@@ -130,11 +134,13 @@ async def test_hybrid_search_return_results(
     assert keyword_results["score"] == pytest.approx(1 / (60 + 1))
 
 
+@patch("incident_intel.services.search_service.Session")
 @patch("incident_intel.services.search_service.keyword_search", new_callable=AsyncMock)
 @patch("incident_intel.services.search_service.vector_search", new_callable=AsyncMock)
 async def test_hybrid_search_overlapping_chunk_scores_higher(
     mock_vector_search,
     mock_keyword_search,
+    mock_session_factory,
 ) -> None:
     """Test hybrid_search scores chunk that appears in both (vector and keyword) searches higher."""
     # Arrange
@@ -179,10 +185,12 @@ async def test_hybrid_search_overlapping_chunk_scores_higher(
             "score": 0.8,
         },
     ]
-    mock_session = AsyncMock()
+    # Mock async context manager in helper functions _keyword_with_own_session and _vector_with_own_session
+    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    mock_session_factory.return_value.__aexit__ = AsyncMock(return_value=None)
 
     # Act
-    results = await hybrid_search(session=mock_session, query="Test query")
+    results = await hybrid_search(query="Test query")
 
     # Assert
     assert len(results) == 3
@@ -198,18 +206,22 @@ async def test_hybrid_search_overlapping_chunk_scores_higher(
     assert vector_only_results["score"] == pytest.approx(1 / (60 + 2))
 
 
+@patch("incident_intel.services.search_service.Session")
 @patch("incident_intel.services.search_service.keyword_search", new_callable=AsyncMock)
 @patch("incident_intel.services.search_service.vector_search", new_callable=AsyncMock)
 async def test_hybrid_search_by_empty_query_does_not_call_other_searches(
     mock_vector_search,
     mock_keyword_search,
+    mock_session_factory,
 ) -> None:
     """Test hybrid_search does not call keyword_search and vector_search when query is empty."""
     # Arrange
-    mock_session = AsyncMock()
+    # Mock async context manager in helper functions _keyword_with_own_session and _vector_with_own_session
+    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    mock_session_factory.return_value.__aexit__ = AsyncMock(return_value=None)
 
     # Act
-    results = await hybrid_search(session=mock_session, query="")
+    results = await hybrid_search(query="")
 
     # Assert
     assert len(results) == 0
@@ -217,11 +229,13 @@ async def test_hybrid_search_by_empty_query_does_not_call_other_searches(
     mock_vector_search.assert_not_called()
 
 
+@patch("incident_intel.services.search_service.Session")
 @patch("incident_intel.services.search_service.keyword_search", new_callable=AsyncMock)
 @patch("incident_intel.services.search_service.vector_search", new_callable=AsyncMock)
 async def test_hybrid_search_respects_limit(
     mock_vector_search,
     mock_keyword_search,
+    mock_session_factory,
 ) -> None:
     """Test hybrid_search correctly truncates results to limit even if combined set is larger."""
     # Arrange
@@ -251,10 +265,12 @@ async def test_hybrid_search_respects_limit(
         }
         for i in range(5)
     ]
-    mock_session = AsyncMock()
+    # Mock async context manager in helper functions _keyword_with_own_session and _vector_with_own_session
+    mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
+    mock_session_factory.return_value.__aexit__ = AsyncMock(return_value=None)
 
     # Act
-    results = await hybrid_search(session=mock_session, query="Test query", limit=limit)
+    results = await hybrid_search(query="Test query", limit=limit)
 
     # Assert
     assert len(results) == limit  # Should truncate down to 3 from the combined 10
