@@ -317,9 +317,7 @@ async def test_handle_chat_stream_yields_tokens_and_done(
             include_sources=False,
         )
     ]
-    print("=" * 30)
-    print(events)
-    print("=" * 30)
+
     # Assert
     assert len(events) == 3
 
