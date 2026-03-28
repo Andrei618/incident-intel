@@ -1,0 +1,343 @@
+"""Unit tests for chat service."""
+
+import json
+import uuid
+from collections.abc import AsyncIterator
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from incident_intel.exceptions import ConversationNotFoundError
+from incident_intel.llm.provider import ChatMessage
+from incident_intel.models.conversation import Conversation
+from incident_intel.schemas.classification import (
+    DispatchResult,
+    QueryIntent,
+    SqlAction,
+    SQLIntent,
+    TicketFilters,
+    TicketPriority,
+    TicketStatus,
+)
+from incident_intel.services.chat_service import handle_chat, handle_chat_stream
+
+
+@patch("incident_intel.services.chat_service.classify_query", new_callable=AsyncMock)
+@patch("incident_intel.services.chat_service.dispatch", new_callable=AsyncMock)
+async def test_handle_chat_hybrid_route(mock_dispatch, mock_classify_query) -> None:
+    """Test handle_chat returns correct dict with hybrid route."""
+    # Arrange
+    test_query_intent = QueryIntent(
+        route="hybrid",
+        confidence=0.9,
+        sql_intent=SQLIntent(
+            action=SqlAction.COUNT,
+            filters=TicketFilters(priority=TicketPriority.P1, status=TicketStatus.OPEN),
+        ),
+    )
+    mock_classify_query.return_value = test_query_intent
+
+    test_chunk_id = uuid.uuid4()
+    test_dispatch_result = DispatchResult(
+        context="test context",
+        sources=[{"id": test_chunk_id, "score": 0.85, "title": "Test chunk"}],
+        route="hybrid",
+    )
+    mock_dispatch.return_value = test_dispatch_result
+
+    test_conversation_id = uuid.uuid4()
+
+    test_session = AsyncMock()
+    test_session.scalar.return_value = Conversation(id=test_conversation_id)
+    test_session.add = MagicMock()
+    test_session.flush = AsyncMock()
+    test_session.commit = AsyncMock()
+
+    test_provider = AsyncMock()
+    test_provider.generate.return_value = "test answer"
+
+    # Act
+    result = await handle_chat(
+        session=test_session,
+        message="test message",
+        conversation_id=test_conversation_id,
+        limit=5,
+        provider=test_provider,
+    )
+
+    # Assert
+    assert result["conversation_id"] == test_conversation_id
+    assert "message_id" in result
+    assert result["answer"] == "test answer"
+    assert result["sources"][0]["id"] == test_chunk_id
+    assert result["route_used"] == "hybrid"
+    assert result["confidence"] == 0.9
+
+    test_provider.generate.assert_called_once()
+    assert test_session.add.call_count == 4
+    test_session.flush.assert_called()
+    test_session.commit.assert_called()
+
+
+@patch("incident_intel.services.chat_service.Conversation")
+@patch("incident_intel.services.chat_service.classify_query", new_callable=AsyncMock)
+@patch("incident_intel.services.chat_service.dispatch", new_callable=AsyncMock)
+async def test_handle_chat_hybrid_route_no_conversation_id_given(
+    mock_dispatch,
+    mock_classify_query,
+    mock_conversation,
+) -> None:
+    """Test handle_chat creates a new conversation when no ID given."""
+    # Arrange
+    test_query_intent = QueryIntent(
+        route="hybrid",
+        confidence=0.9,
+        sql_intent=SQLIntent(
+            action=SqlAction.COUNT,
+            filters=TicketFilters(priority=TicketPriority.P1, status=TicketStatus.OPEN),
+        ),
+    )
+    mock_classify_query.return_value = test_query_intent
+
+    test_chunk_id = uuid.uuid4()
+    test_dispatch_result = DispatchResult(
+        context="test context",
+        sources=[{"id": test_chunk_id, "score": 0.85, "title": "Test chunk"}],
+        route="hybrid",
+    )
+    mock_dispatch.return_value = test_dispatch_result
+
+    test_conversation_id = None
+    mock_conversation.return_value.id = uuid.uuid4()
+
+    test_session = AsyncMock()
+    test_session.add = MagicMock()
+    test_session.flush = AsyncMock()
+    test_session.commit = AsyncMock()
+
+    test_provider = AsyncMock()
+    test_provider.generate.return_value = "test answer"
+
+    # Act
+    result = await handle_chat(
+        session=test_session,
+        message="test message",
+        conversation_id=test_conversation_id,
+        limit=5,
+        provider=test_provider,
+    )
+
+    # Assert
+    assert isinstance(result["conversation_id"], uuid.UUID)
+    assert "message_id" in result
+    assert result["answer"] == "test answer"
+    assert result["sources"][0]["id"] == test_chunk_id
+    assert result["route_used"] == "hybrid"
+    assert result["confidence"] == 0.9
+
+    test_provider.generate.assert_called_once()
+    test_session.scalar.assert_not_called()
+    assert test_session.add.call_count == 5
+    test_session.flush.assert_called()
+    test_session.commit.assert_called()
+
+
+@patch("incident_intel.services.chat_service.classify_query", new_callable=AsyncMock)
+@patch("incident_intel.services.chat_service.dispatch", new_callable=AsyncMock)
+async def test_handle_chat_clarify_skips_llm(mock_dispatch, mock_classify_query) -> None:
+    """Test handle_chat returns clarifing question with clarify route."""
+    # Clarify route: uses result.context as answer,
+    # provider.generate NOT called, still persists Messages + QueryLog
+    # Arrange
+    test_query_intent = QueryIntent(
+        route="clarify",
+        confidence=0.9,
+    )
+    mock_classify_query.return_value = test_query_intent
+
+    test_dispatch_result = DispatchResult(
+        context="Could you clarify what you mean?",
+        sources=[],
+        route="clarify",
+    )
+    mock_dispatch.return_value = test_dispatch_result
+
+    test_conversation_id = uuid.uuid4()
+
+    test_session = AsyncMock()
+    test_session.scalar.return_value = Conversation(id=test_conversation_id)
+    test_session.add = MagicMock()
+    test_session.flush = AsyncMock()
+    test_session.commit = AsyncMock()
+
+    test_provider = AsyncMock()
+
+    # Act
+    result = await handle_chat(
+        session=test_session,
+        message="test message",
+        conversation_id=test_conversation_id,
+        limit=5,
+        provider=test_provider,
+    )
+    # Assert
+    assert result["conversation_id"] == test_conversation_id
+    assert "message_id" in result
+    assert result["answer"] == "Could you clarify what you mean?"
+    assert result["route_used"] == "clarify"
+    assert result["confidence"] == 0.9
+
+    test_provider.generate.assert_not_called()
+    assert test_session.add.call_count == 3
+    test_session.flush.assert_called()
+    test_session.commit.assert_called()
+
+
+async def test_handle_chat_conversation_not_found() -> None:
+    """Test handle_chat raises ConversationNotFoundError with non-existing  conversation_id."""
+    # Arrange
+    test_conversation_id = uuid.uuid4()
+    test_session = AsyncMock()
+    test_session.scalar.return_value = None
+
+    # Act
+    with pytest.raises(ConversationNotFoundError) as e:
+        await handle_chat(
+            session=test_session,
+            message="test message",
+            conversation_id=test_conversation_id,
+            limit=5,
+            provider=None,
+        )
+
+    # Assert
+    assert f"Conversation {test_conversation_id} not found" in str(e.value)
+
+
+@patch("incident_intel.services.chat_service.classify_query", new_callable=AsyncMock)
+@patch("incident_intel.services.chat_service.dispatch", new_callable=AsyncMock)
+async def test_handle_chat_rollback_on_error(mock_dispatch, mock_classify_query) -> None:
+    """Test handle_chat makes rollback after error."""
+    # LLM raises → session.rollback() called, exception re-raised
+    # Arrange
+    test_query_intent = QueryIntent(
+        route="hybrid",
+        confidence=0.9,
+        sql_intent=SQLIntent(
+            action=SqlAction.COUNT,
+            filters=TicketFilters(priority=TicketPriority.P1, status=TicketStatus.OPEN),
+        ),
+    )
+    mock_classify_query.return_value = test_query_intent
+
+    test_dispatch_result = DispatchResult(
+        context="test context",
+        sources=[],
+        route="hybrid",
+    )
+    mock_dispatch.return_value = test_dispatch_result
+
+    test_conversation_id = uuid.uuid4()
+
+    test_session = AsyncMock()
+    test_session.scalar.return_value = Conversation(id=test_conversation_id)
+    test_session.add = MagicMock()
+    test_session.flush = AsyncMock()
+    test_session.commit = AsyncMock()
+
+    test_provider = AsyncMock()
+    test_provider.generate.side_effect = RuntimeError("LLM failed")
+
+    # Act
+    with pytest.raises(RuntimeError):
+        await handle_chat(
+            session=test_session,
+            message="test message",
+            conversation_id=test_conversation_id,
+            limit=5,
+            provider=test_provider,
+        )
+
+    # Assert
+    test_session.rollback.assert_called_once()
+
+
+@patch("incident_intel.services.chat_service.classify_query", new_callable=AsyncMock)
+@patch("incident_intel.services.chat_service.dispatch", new_callable=AsyncMock)
+async def test_handle_chat_stream_yields_tokens_and_done(
+    mock_dispatch, mock_classify_query
+) -> None:
+    """Test handle_chat yields events with correct shape."""
+    # Stream path: yields token events, then done event with correct shape after commit
+    # Arrange
+    test_query_intent = QueryIntent(
+        route="hybrid",
+        confidence=0.9,
+        sql_intent=SQLIntent(
+            action=SqlAction.COUNT,
+            filters=TicketFilters(priority=TicketPriority.P1, status=TicketStatus.OPEN),
+        ),
+    )
+    mock_classify_query.return_value = test_query_intent
+
+    test_chunk_id = uuid.uuid4()
+    test_dispatch_result = DispatchResult(
+        context="test context",
+        sources=[{"id": test_chunk_id, "score": 0.85, "title": "Test chunk"}],
+        route="hybrid",
+    )
+    mock_dispatch.return_value = test_dispatch_result
+
+    test_conversation_id = uuid.uuid4()
+
+    test_session = AsyncMock()
+    test_session.scalar.return_value = Conversation(id=test_conversation_id)
+    test_session.add = MagicMock()
+    test_session.flush = AsyncMock()
+    test_session.commit = AsyncMock()
+
+    test_messages = ["Hello", " world"]
+
+    async def mock_async_gen(**kwargs: list[ChatMessage]) -> AsyncIterator[str]:
+        for token in test_messages:
+            yield token
+
+    test_provider = AsyncMock()
+    test_provider.generate_stream = mock_async_gen
+
+    # Act
+    events = [
+        event
+        async for event in handle_chat_stream(
+            session=test_session,
+            message="test message",
+            conversation_id=test_conversation_id,
+            limit=5,
+            provider=test_provider,
+            include_sources=False,
+        )
+    ]
+
+    # Assert
+    assert len(events) == 3
+
+    # event format: "data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+    parsed = [json.loads(event[6:].strip()) for event in events]
+
+    # events[0] - a token event with content "Hello"
+    assert parsed[0]["type"] == "token"
+    assert parsed[0]["content"] == "Hello"
+
+    # events[1] — a token event with content " world"
+    assert parsed[1]["type"] == "token"
+    assert parsed[1]["content"] == " world"
+
+    # events[2] — a done event with conversation_id, message_id, sources, route_used, confidence
+    assert parsed[2]["type"] == "done"
+    assert parsed[2]["route_used"] == "hybrid"
+    assert parsed[2]["confidence"] == 0.9
+    assert parsed[2]["sources"] == []
+    assert "conversation_id" in parsed[2]
+    assert "message_id" in parsed[2]
+
+    test_session.commit.assert_called_once()

@@ -1,0 +1,284 @@
+"""Service layer for chat - core orchestration."""
+
+import json
+import time
+from collections.abc import AsyncIterator
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from incident_intel.core.logging import get_logger
+from incident_intel.exceptions import ConversationNotFoundError
+from incident_intel.llm.openai_provider import OpenAIChatProvider
+from incident_intel.llm.provider import ChatMessage, ChatProvider
+from incident_intel.models.conversation import Conversation, Message, MessageRole
+from incident_intel.models.query_log import QueryLog, Route
+from incident_intel.models.query_source import QuerySource
+from incident_intel.services.classification_service import classify_query
+from incident_intel.services.dispatch import dispatch
+
+logger = get_logger(__name__)
+
+
+def _build_messages(context: str, message: str) -> list[ChatMessage]:
+    """Build list of messages for chat from user message and context."""
+    system_message_content = f"""\
+You are an IT operations assistant. Answer the user's question using ONLY
+the context provided below. Cite sources by number (e.g., [1], [2]).
+If the context does not contain enough information, say so clearly.
+Do not make up information or citations not present in the provided context.
+
+Context:
+{context}
+"""
+    return [
+        ChatMessage(role="system", content=system_message_content),
+        ChatMessage(role="user", content=message),
+    ]
+
+
+async def handle_chat(
+    session: AsyncSession,
+    message: str,
+    conversation_id: UUID | None = None,
+    limit: int = 5,
+    provider: ChatProvider | None = None,
+) -> dict[str, Any]:
+    """Handle non-streaming chat."""
+    # Default provider created here, not in param default, for test injection
+    if provider is None:
+        active_provider: ChatProvider = OpenAIChatProvider()
+    else:
+        active_provider = provider
+
+    logger.info("processing_chat", conversation_id=conversation_id, message_length=len(message))
+    # Resolve/create Conversation
+    if conversation_id is None:
+        conversation = Conversation()
+        session.add(conversation)
+        await session.flush()
+    else:
+        stmt = select(Conversation).where(Conversation.id == conversation_id)
+        found = await session.scalar(stmt)
+        if found is None:
+            raise ConversationNotFoundError(conversation_id)
+        conversation = found
+
+    try:
+        # Latency timer
+        start_time = time.time()
+
+        # Classify query
+        intent = await classify_query(query=message)
+
+        # Dispatch to handler
+        result = await dispatch(
+            session=session,
+            intent=intent,
+            original_query=message,
+            limit=limit,
+        )
+
+        logger.info(
+            "chat_routed",
+            route=result.route,
+            sources_count=len(result.sources),
+            confidence=intent.confidence,
+        )
+
+        # Clarify short-circuit OR build prompt + call LLM
+        if result.route == "clarify":
+            answer = result.context
+        else:
+            messages = _build_messages(result.context, message=message)
+            answer = await active_provider.generate(messages=messages)
+
+        # Save persistence records
+        user_message = Message(
+            conversation_id=conversation.id,
+            role=MessageRole.USER,
+            content=message,
+        )
+        session.add(user_message)
+
+        assistant_message = Message(
+            conversation_id=conversation.id,
+            role=MessageRole.ASSISTANT,
+            content=answer,
+        )
+        session.add(assistant_message)
+
+        query_log = QueryLog(
+            conversation_id=conversation.id,
+            query_text=message,
+            route_used=Route(result.route),
+            confidence=intent.confidence,
+            latency_ms=int((time.time() - start_time) * 1000),
+        )
+        session.add(query_log)
+
+        await session.flush()
+
+        for i, chunk in enumerate(result.sources, 1):
+            query_source = QuerySource(
+                query_log_id=query_log.id,
+                chunk_id=chunk["id"],
+                rank=i,
+                relevance_score=chunk["score"],
+                was_used=True,
+            )
+            session.add(query_source)
+        await session.flush()
+
+        # Commit + return
+        await session.commit()
+        return {
+            "conversation_id": conversation.id,
+            "message_id": assistant_message.id,
+            "answer": answer,
+            "sources": result.sources,
+            "route_used": result.route,
+            "confidence": intent.confidence,
+        }
+
+    except Exception:
+        logger.error("chat_processing_failed", exc_info=True)
+        await session.rollback()
+        raise
+
+
+async def handle_chat_stream(
+    session: AsyncSession,
+    message: str,
+    conversation_id: UUID | None = None,
+    limit: int = 5,
+    provider: ChatProvider | None = None,
+    include_sources: bool = True,
+) -> AsyncIterator[str]:
+    """Handle streaming chat."""
+    # Default provider created here, not in param default, for test injection
+    if provider is None:
+        active_provider: ChatProvider = OpenAIChatProvider()
+    else:
+        active_provider = provider
+
+    logger.info("processing_chat", conversation_id=conversation_id, message_length=len(message))
+    try:
+        # Resolve/create Conversation
+        if conversation_id is None:
+            conversation = Conversation()
+            session.add(conversation)
+            await session.flush()
+        else:
+            stmt = select(Conversation).where(Conversation.id == conversation_id)
+            found = await session.scalar(stmt)
+            if found is None:
+                raise ConversationNotFoundError(conversation_id)
+            conversation = found
+
+        # Latency timer
+        start_time = time.time()
+
+        # Classify query
+        intent = await classify_query(query=message)
+
+        # Dispatch to handler
+        result = await dispatch(
+            session=session,
+            intent=intent,
+            original_query=message,
+            limit=limit,
+        )
+
+        logger.info(
+            "chat_routed",
+            route=result.route,
+            sources_count=len(result.sources),
+            confidence=intent.confidence,
+        )
+        # Clarify short-circuit OR build prompt + call LLM
+        if result.route == "clarify":
+            answer = result.context
+            yield f"data: {json.dumps({'type': 'token', 'content': answer})}\n\n"
+        else:
+            messages = _build_messages(result.context, message=message)
+            tokens: list[str] = []
+            async for token in active_provider.generate_stream(messages=messages):
+                yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                tokens.append(token)
+            answer = "".join(tokens)
+
+        # Save persistence records
+        user_message = Message(
+            conversation_id=conversation.id,
+            role=MessageRole.USER,
+            content=message,
+        )
+        session.add(user_message)
+
+        assistant_message = Message(
+            conversation_id=conversation.id,
+            role=MessageRole.ASSISTANT,
+            content=answer,
+        )
+        session.add(assistant_message)
+
+        query_log = QueryLog(
+            conversation_id=conversation.id,
+            query_text=message,
+            route_used=Route(result.route),
+            confidence=intent.confidence,
+            latency_ms=int((time.time() - start_time) * 1000),
+        )
+        session.add(query_log)
+
+        await session.flush()
+
+        for i, chunk in enumerate(result.sources, 1):
+            query_source = QuerySource(
+                query_log_id=query_log.id,
+                chunk_id=chunk["id"],
+                rank=i,
+                relevance_score=chunk["score"],
+                was_used=True,
+            )
+            session.add(query_source)
+        await session.flush()
+
+        # Commit + yield
+        await session.commit()
+        sources = []
+        if include_sources:
+            sources = [
+                {
+                    "chunk_id": str(chunk["id"]),
+                    "document_id": str(chunk["document_id"]),
+                    "document_title": chunk["title"],
+                    "chunk_index": chunk["chunk_index"],
+                    "relevance_score": chunk["score"],
+                }
+                for chunk in result.sources
+            ]
+        yield f"data: {
+            json.dumps(
+                {
+                    'type': 'done',
+                    'conversation_id': str(conversation.id),
+                    'message_id': str(assistant_message.id),
+                    'sources': sources,
+                    'route_used': result.route,
+                    'confidence': intent.confidence,
+                }
+            )
+        }\n\n"
+
+    except ConversationNotFoundError as e:
+        logger.error("chat_processing_failed", exc_info=True)
+        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    except Exception:
+        logger.error("chat_processing_failed", exc_info=True)
+        await session.rollback()
+        yield f"data: {json.dumps({'type': 'error', 'message': 'An internal error occurred'})}\n\n"
