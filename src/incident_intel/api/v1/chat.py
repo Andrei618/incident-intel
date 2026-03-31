@@ -19,8 +19,14 @@ async def chat_endpoint(
 ) -> ChatResponse | StreamingResponse:
     """Handle chat.
 
+    Non-streaming (stream=false): returns ChatResponse JSON.
+    Streaming (stream=true): returns text/event-stream with SSE events:
+        - data: {"type": "token", "content": "..."} — each token
+        - data: {"type": "done", "conversation_id": "...", "message_id": "...", "sources": [...], "route_used": "...", "confidence": ...} — after persistence
+        - data: {"type": "error", "message": "..."} — on failure
+
     Raises:
-        HTTPException(404) if conversation not found.
+        HTTPException(404) if conversation not found (non-streaming only).
     """
     if request.stream:
         return StreamingResponse(
@@ -32,6 +38,10 @@ async def chat_endpoint(
                 include_sources=request.options.include_sources,
             ),
             media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",  # for browsers and proxies
+                "X-Accel-Buffering": "no",  # for reverse proxy (Nginx)
+            },
         )
     else:
         try:
