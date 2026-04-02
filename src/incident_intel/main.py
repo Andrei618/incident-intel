@@ -1,12 +1,15 @@
 """App entry point."""
 
+import os
+
 from dotenv import load_dotenv
 
 # Load environment variables BEFORE importing any local modules that read os.getenv().
 # Python executes module-level code at import time, so we must load .env first.
 load_dotenv()
 
-from fastapi import FastAPI  # noqa: E402, I001 //E402: import not at top, I001: import block is unsorted
+from fastapi import FastAPI  # noqa: E402 (E402: import not at top)
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 from incident_intel.api import health  # noqa: E402
 from incident_intel.api.v1 import chat, documents, search, tickets  # noqa: E402
@@ -24,7 +27,19 @@ app: FastAPI = FastAPI(
     ),
 )
 
+ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+
 app.add_middleware(RequestIDMiddleware)
+
+# CORSMiddleware is registered after RequestIDMiddleware because in Starlette
+# middleware executes in reverse registration order
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(health.router)
 app.include_router(tickets.router, prefix="/api/v1")
