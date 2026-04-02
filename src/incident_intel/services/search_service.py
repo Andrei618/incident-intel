@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import time
 from typing import Any
 from uuid import UUID
 
@@ -32,16 +33,25 @@ async def get_or_create_embeddings(query: str) -> str:
     Returns:
         Embedding as string (ready for pgvector).
     """
+    t_start = time.perf_counter()
     normalized_query = query.lower()
+    cache_hit = False
     try:
         embedding_redis = await redis_client.get(normalized_query)
         if embedding_redis:
-            return str(json.loads(embedding_redis))
+            cache_hit = True
+            result = str(json.loads(embedding_redis))
         else:
             embedding = (await create_embeddings([normalized_query]))[0]
             embedding_redis = json.dumps(embedding)
             await redis_client.set(normalized_query, embedding_redis, ex=REDIS_TTL)
-            return str(embedding)
+            result = str(embedding)
+        logger.info(
+            "timing_embedding",
+            duration_ms=int((time.perf_counter() - t_start) * 1000),
+            cache_hit=cache_hit,
+        )
+        return result
     except RedisError as e:
         logger.warning("redis_cache_unavailable", action="FALLBACK_TO_OPENAI")
         logger.debug("redis_cache_error_detail", error=e)
@@ -144,6 +154,8 @@ async def hybrid_search(
     if query.strip() == "":
         return []
 
+    t_start = time.perf_counter()
+
     chunk_data: dict[UUID, dict[str, Any]] = {}
 
     # Use two separate sessions, so each concurrent query gets its own connection.
@@ -151,6 +163,7 @@ async def hybrid_search(
         _keyword_with_own_session(query=query, limit=limit),
         _vector_with_own_session(query=query, limit=limit),
     )
+    t_search = time.perf_counter()
 
     for results in (keyword_results, vector_results):
         for rank, row in enumerate(results):
@@ -168,5 +181,14 @@ async def hybrid_search(
 
     final_results = sorted(chunk_data.values(), key=lambda x: x["score"], reverse=True)[:limit]
     logger.debug("hybrid_search_complete", result_count=len(final_results))
+
+    logger.info(
+        "timing_hybrid_search",
+        search_ms=int((t_search - t_start) * 1000),
+        total_ms=int((time.perf_counter() - t_start) * 1000),
+        keyword_count=len(keyword_results),
+        vector_count=len(vector_results),
+        final_count=len(final_results),
+    )
 
     return final_results

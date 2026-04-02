@@ -16,6 +16,7 @@ from incident_intel.llm.provider import ChatMessage, ChatProvider
 from incident_intel.models.conversation import Conversation, Message, MessageRole
 from incident_intel.models.query_log import QueryLog, Route
 from incident_intel.models.query_source import QuerySource
+from incident_intel.schemas.classification import DispatchResult
 from incident_intel.services.classification_service import classify_query
 from incident_intel.services.dispatch import dispatch
 
@@ -37,6 +38,57 @@ Context:
         ChatMessage(role="system", content=system_message_content),
         ChatMessage(role="user", content=message),
     ]
+
+
+async def _persist_chat_records(
+    session: AsyncSession,
+    message: str,
+    conversation_id: UUID,
+    answer: str,
+    result: DispatchResult,
+    confidence: float,
+    t_start: float,
+) -> tuple[UUID, UUID]:
+    # Save persistence records
+    user_message = Message(
+        conversation_id=conversation_id,
+        role=MessageRole.USER,
+        content=message,
+    )
+    session.add(user_message)
+
+    assistant_message = Message(
+        conversation_id=conversation_id,
+        role=MessageRole.ASSISTANT,
+        content=answer,
+    )
+    session.add(assistant_message)
+
+    query_log = QueryLog(
+        conversation_id=conversation_id,
+        query_text=message,
+        route_used=Route(result.route),
+        confidence=confidence,
+        latency_ms=int((time.perf_counter() - t_start) * 1000),
+    )
+    session.add(query_log)
+
+    await session.flush()
+
+    for i, chunk in enumerate(result.sources, 1):
+        query_source = QuerySource(
+            query_log_id=query_log.id,
+            chunk_id=chunk["id"],
+            rank=i,
+            relevance_score=chunk["score"],
+            was_used=True,
+        )
+        session.add(query_source)
+    await session.flush()
+
+    await session.commit()
+
+    return (conversation_id, assistant_message.id)
 
 
 async def handle_chat(
@@ -68,10 +120,12 @@ async def handle_chat(
 
     try:
         # Latency timer
-        start_time = time.time()
+        t_start = time.perf_counter()
 
         # Classify query
         intent = await classify_query(query=message)
+        t_classify = time.perf_counter()
+        logger.info("timing_classify", duration_ms=int((t_classify - t_start) * 1000))
 
         # Dispatch to handler
         result = await dispatch(
@@ -80,6 +134,8 @@ async def handle_chat(
             original_query=message,
             limit=limit,
         )
+        t_dispatch = time.perf_counter()
+        logger.info("timing_dispatch", duration_ms=int((t_dispatch - t_classify) * 1000))
 
         logger.info(
             "chat_routed",
@@ -94,49 +150,35 @@ async def handle_chat(
         else:
             messages = _build_messages(result.context, message=message)
             answer = await active_provider.generate(messages=messages)
+        t_generate = time.perf_counter()
+        logger.info("timing_generate", duration_ms=int((t_generate - t_dispatch) * 1000))
 
-        # Save persistence records
-        user_message = Message(
+        conversation_id, assistant_message_id = await _persist_chat_records(
+            session=session,
+            message=message,
             conversation_id=conversation.id,
-            role=MessageRole.USER,
-            content=message,
-        )
-        session.add(user_message)
-
-        assistant_message = Message(
-            conversation_id=conversation.id,
-            role=MessageRole.ASSISTANT,
-            content=answer,
-        )
-        session.add(assistant_message)
-
-        query_log = QueryLog(
-            conversation_id=conversation.id,
-            query_text=message,
-            route_used=Route(result.route),
+            answer=answer,
+            result=result,
             confidence=intent.confidence,
-            latency_ms=int((time.time() - start_time) * 1000),
+            t_start=t_start,
         )
-        session.add(query_log)
 
-        await session.flush()
+        t_persist = time.perf_counter()
+        logger.info("timing_persist", duration_ms=int((t_persist - t_generate) * 1000))
+        logger.info(
+            "timing_summary",
+            classify_ms=int((t_classify - t_start) * 1000),
+            dispatch_ms=int((t_dispatch - t_classify) * 1000),
+            generate_ms=int((t_generate - t_dispatch) * 1000),
+            persist_ms=int((t_persist - t_generate) * 1000),
+            total_ms=int((t_persist - t_start) * 1000),
+            route=result.route,
+            stream=False,
+        )
 
-        for i, chunk in enumerate(result.sources, 1):
-            query_source = QuerySource(
-                query_log_id=query_log.id,
-                chunk_id=chunk["id"],
-                rank=i,
-                relevance_score=chunk["score"],
-                was_used=True,
-            )
-            session.add(query_source)
-        await session.flush()
-
-        # Commit + return
-        await session.commit()
         return {
-            "conversation_id": conversation.id,
-            "message_id": assistant_message.id,
+            "conversation_id": conversation_id,
+            "message_id": assistant_message_id,
             "answer": answer,
             "sources": result.sources,
             "route_used": result.route,
@@ -179,10 +221,12 @@ async def handle_chat_stream(
             conversation = found
 
         # Latency timer
-        start_time = time.time()
+        t_start = time.perf_counter()
 
         # Classify query
         intent = await classify_query(query=message)
+        t_classify = time.perf_counter()
+        logger.info("timing_classify", duration_ms=int((t_classify - t_start) * 1000))
 
         # Dispatch to handler
         result = await dispatch(
@@ -191,6 +235,8 @@ async def handle_chat_stream(
             original_query=message,
             limit=limit,
         )
+        t_dispatch = time.perf_counter()
+        logger.info("timing_dispatch", duration_ms=int((t_dispatch - t_classify) * 1000))
 
         logger.info(
             "chat_routed",
@@ -199,56 +245,50 @@ async def handle_chat_stream(
             confidence=intent.confidence,
         )
         # Clarify short-circuit OR build prompt + call LLM
+        time_to_first_token_ms = 0
         if result.route == "clarify":
             answer = result.context
             yield f"data: {json.dumps({'type': 'token', 'content': answer})}\n\n"
         else:
             messages = _build_messages(result.context, message=message)
             tokens: list[str] = []
+            first_token_logged = False
             async for token in active_provider.generate_stream(messages=messages):
+                if not first_token_logged:
+                    time_to_first_token_ms = int((time.perf_counter() - t_dispatch) * 1000)
+                    logger.info("timing_first_token", time_to_first_token_ms=time_to_first_token_ms)
+                    first_token_logged = True
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
                 tokens.append(token)
             answer = "".join(tokens)
 
-        # Save persistence records
-        user_message = Message(
-            conversation_id=conversation.id,
-            role=MessageRole.USER,
-            content=message,
-        )
-        session.add(user_message)
+        t_generate = time.perf_counter()
+        logger.info("timing_generate", duration_ms=int((t_generate - t_dispatch) * 1000))
 
-        assistant_message = Message(
+        conversation_id, assistant_message_id = await _persist_chat_records(
+            session=session,
+            message=message,
             conversation_id=conversation.id,
-            role=MessageRole.ASSISTANT,
-            content=answer,
-        )
-        session.add(assistant_message)
-
-        query_log = QueryLog(
-            conversation_id=conversation.id,
-            query_text=message,
-            route_used=Route(result.route),
+            answer=answer,
+            result=result,
             confidence=intent.confidence,
-            latency_ms=int((time.time() - start_time) * 1000),
+            t_start=t_start,
         )
-        session.add(query_log)
 
-        await session.flush()
+        t_persist = time.perf_counter()
+        logger.info("timing_persist", duration_ms=int((t_persist - t_generate) * 1000))
+        logger.info(
+            "timing_summary",
+            classify_ms=int((t_classify - t_start) * 1000),
+            dispatch_ms=int((t_dispatch - t_classify) * 1000),
+            generate_ms=int((t_generate - t_dispatch) * 1000),
+            persist_ms=int((t_persist - t_generate) * 1000),
+            total_ms=int((t_persist - t_start) * 1000),
+            time_to_first_token_ms=time_to_first_token_ms,
+            route=result.route,
+            stream=True,
+        )
 
-        for i, chunk in enumerate(result.sources, 1):
-            query_source = QuerySource(
-                query_log_id=query_log.id,
-                chunk_id=chunk["id"],
-                rank=i,
-                relevance_score=chunk["score"],
-                was_used=True,
-            )
-            session.add(query_source)
-        await session.flush()
-
-        # Commit + yield
-        await session.commit()
         sources = []
         if include_sources:
             sources = [
@@ -265,8 +305,8 @@ async def handle_chat_stream(
             json.dumps(
                 {
                     'type': 'done',
-                    'conversation_id': str(conversation.id),
-                    'message_id': str(assistant_message.id),
+                    'conversation_id': str(conversation_id),
+                    'message_id': str(assistant_message_id),
                     'sources': sources,
                     'route_used': result.route,
                     'confidence': intent.confidence,

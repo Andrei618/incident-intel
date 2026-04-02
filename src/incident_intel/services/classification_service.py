@@ -5,6 +5,7 @@ Returns a QueryIntent with route, confidence, and route-specific data.
 """
 
 import os
+import time
 from datetime import UTC, datetime
 
 import openai
@@ -78,6 +79,7 @@ async def classify_query(query: str) -> QueryIntent:
     Returns:
         QueryIntent with route, confidence, and route-specific data.
     """
+    t_start = time.perf_counter()
     try:
         messages: list[ChatCompletionMessageParam] = [
             {"role": "system", "content": _build_system_prompt()},
@@ -88,6 +90,11 @@ async def classify_query(query: str) -> QueryIntent:
             messages=messages,
             response_format=QueryIntent,
             temperature=TEMPERATURE,
+        )
+        logger.info(
+            "timing_classification",
+            duration_ms=int((time.perf_counter() - t_start) * 1000),
+            model=OPENAI_MODEL_CLASSIFICATION,
         )
         message = response.choices[0].message
 
@@ -115,6 +122,9 @@ async def classify_query(query: str) -> QueryIntent:
         return intent
 
     except (openai.OpenAIError, ValidationError) as e:
+        logger.info(
+            "timing_classification_failed", duration_ms=int((time.perf_counter() - t_start) * 1000)
+        )
         logger.warning("classification_error", action="FALLBACK_TO_HYBRID")
         logger.debug("classification_error_detail", error=e)
         return _build_fallback_intent(query)
