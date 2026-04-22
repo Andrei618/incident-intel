@@ -1,9 +1,11 @@
-name: CI
+name: CI-backend
 
 on:
   pull_request:
+    paths: ["src/**", "pyproject.toml", "migrations/**", ".github/workflows/ci-backend.yml"]
     branches: [develop, main]
   push:
+    paths: ["src/**", "pyproject.toml", "migrations/**", ".github/workflows/ci-backend.yml"]
     branches: [develop, main]
 
 # Cancel outdated runs
@@ -50,12 +52,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          enable-cache: true  # speed up CI
+          enable-cache: true # speed up CI
 
       - name: Install dependencies
         run: uv sync --all-extras --frozen
@@ -77,4 +79,3 @@ jobs:
 
       # TODO: Add coverage threshold (--cov-fail-under=80)
       # TODO: Separate fast/slow tests (skip slow integration tests in CI)
-        
