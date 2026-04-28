@@ -3,6 +3,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { RootErrorBoundary } from "@/components/ErrorBoundary";
 
 const TicketsPage = lazy(() => import("@/pages/TicketsPage"))
+const ChatPage = lazy(() => import("@/pages/ChatPage"))
 
 const router = createBrowserRouter([
   {
@@ -17,7 +18,14 @@ const router = createBrowserRouter([
           </Suspense>
         ),
       },
-      // stub other routes here with a placeholder element
+      {
+        path: "chat",
+        element: (
+          <Suspense fallback={<div>Loading...</div>}>
+            <ChatPage />
+          </Suspense>
+        )
+      },
     ],
   },
 ]);
