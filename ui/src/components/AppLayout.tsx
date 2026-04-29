@@ -13,11 +13,11 @@ export function AppLayout() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="flex items-center gap-6 px-6 py-3 border-b bg-background">
-        <Link to="/" className="font-semibold text-foreground">
+      <header className="flex items-center gap-3 px-3 sm:gap-6 sm:px-6 py-3 border-b bg-background">
+        <Link to="/" className="font-semibold text-foreground whitespace-nowrap shrink-0">
           Incident Intel
         </Link>
-        <nav className="flex items-center gap-4">
+        <nav className="flex items-center gap-2 sm:gap-4 flex-1 overflow-x-auto">
           <NavLink to="/chat" className={navClass}>
             Chat
           </NavLink>
@@ -36,13 +36,13 @@ export function AppLayout() {
           onClick={toggleTheme}
           variant="ghost"
           size="icon"
-          className="ml-auto"
+          className="shrink-0 ml-auto"
           aria-label="Toggle theme"
         >
           {icon}
         </Button>
       </header>
-      <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-8">
+      <main className="flex flex-col flex-1 max-w-5xl mx-auto w-full px-6 py-8">
         <Outlet />
       </main>
     </div>
