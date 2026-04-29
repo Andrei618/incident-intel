@@ -1,19 +1,28 @@
 import { lazy, Suspense } from "react";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import {
+  createBrowserRouter,
+  RouterProvider,
+  Navigate,
+} from "react-router-dom";
 import { RootErrorBoundary } from "@/components/ErrorBoundary";
+import { AppLayout } from "@/components/AppLayout";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
-const TicketsPage = lazy(() => import("@/pages/TicketsPage"))
-const ChatPage = lazy(() => import("@/pages/ChatPage"))
+const TicketsPage = lazy(() => import("@/pages/TicketsPage"));
+const ChatPage = lazy(() => import("@/pages/ChatPage"));
+const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 
 const router = createBrowserRouter([
   {
     path: "/",
+    element: <AppLayout />,
     errorElement: <RootErrorBoundary />,
     children: [
+      { index: true, element: <Navigate to="/chat" replace /> },
       {
         path: "tickets",
         element: (
-          <Suspense fallback={<div>Loading...</div>}>
+          <Suspense fallback={<LoadingSkeleton />}>
             <TicketsPage />
           </Suspense>
         ),
@@ -21,10 +30,18 @@ const router = createBrowserRouter([
       {
         path: "chat",
         element: (
-          <Suspense fallback={<div>Loading...</div>}>
+          <Suspense fallback={<LoadingSkeleton />}>
             <ChatPage />
           </Suspense>
-        )
+        ),
+      },
+      {
+        path: "*",
+        element: (
+          <Suspense fallback={<LoadingSkeleton />}>
+            <NotFoundPage />
+          </Suspense>
+        ),
       },
     ],
   },
