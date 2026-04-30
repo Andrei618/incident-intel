@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ComponentType } from "react";
 import {
   createBrowserRouter,
   RouterProvider,
@@ -10,7 +10,16 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
 const TicketsPage = lazy(() => import("@/pages/TicketsPage"));
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
+const SearchPage = lazy(() => import("@/pages/SearchPage"));
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
+
+function suspenseRoute(Component: ComponentType) {
+  return (
+    <Suspense fallback={<LoadingSkeleton />}>
+      <Component />
+    </Suspense>
+  );
+}
 
 const router = createBrowserRouter([
   {
@@ -19,30 +28,10 @@ const router = createBrowserRouter([
     errorElement: <RootErrorBoundary />,
     children: [
       { index: true, element: <Navigate to="/chat" replace /> },
-      {
-        path: "tickets",
-        element: (
-          <Suspense fallback={<LoadingSkeleton />}>
-            <TicketsPage />
-          </Suspense>
-        ),
-      },
-      {
-        path: "chat",
-        element: (
-          <Suspense fallback={<LoadingSkeleton />}>
-            <ChatPage />
-          </Suspense>
-        ),
-      },
-      {
-        path: "*",
-        element: (
-          <Suspense fallback={<LoadingSkeleton />}>
-            <NotFoundPage />
-          </Suspense>
-        ),
-      },
+      { path: "tickets", element: suspenseRoute(TicketsPage) },
+      { path: "chat", element: suspenseRoute(ChatPage) },
+      { path: "search", element: suspenseRoute(SearchPage)},
+      { path: "*", element: suspenseRoute(NotFoundPage) },
     ],
   },
 ]);
