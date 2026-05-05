@@ -6,7 +6,7 @@ interface DescriptionItemProps {
 }
 
 export function DescriptionItem({ label, value }: DescriptionItemProps) {
-    if (value === null || value === undefined) return null;
+    if (value === null || value === undefined || value === "") return null;
     return (
         <div>
             <dt className="text-sm text-muted-foreground">{label}</dt>

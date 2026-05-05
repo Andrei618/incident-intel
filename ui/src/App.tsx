@@ -11,6 +11,7 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 const TicketsPage = lazy(() => import("@/pages/TicketsPage"));
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const SearchPage = lazy(() => import("@/pages/SearchPage"));
+const TicketDetailPage = lazy(() => import("@/pages/TicketDetailPage"));
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 
 function suspenseRoute(Component: ComponentType) {
@@ -31,6 +32,7 @@ const router = createBrowserRouter([
       { path: "tickets", element: suspenseRoute(TicketsPage) },
       { path: "chat", element: suspenseRoute(ChatPage) },
       { path: "search", element: suspenseRoute(SearchPage)},
+      { path: "tickets/:ticketId", element: suspenseRoute(TicketDetailPage)},
       { path: "*", element: suspenseRoute(NotFoundPage) },
     ],
   },
