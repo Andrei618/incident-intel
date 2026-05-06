@@ -192,6 +192,29 @@ async def update_ticket(
     return ticket
 
 
+async def delete_ticket(session: AsyncSession, ticket_id: UUID) -> None:
+    """Delete ticket by ID.
+
+    Args:
+        session: Active database session.
+        ticket_id: UUID of the ticket to delete.
+
+    Return:
+        None.
+
+    Raises:
+        TicketNotFoundError: If ticket does not exist.
+    """
+    ticket = await get_ticket(session, ticket_id)
+
+    logger.info("ticket_deleting", ticket_id=str(ticket_id))
+
+    await session.delete(ticket)
+    await session.commit()
+
+    logger.info("ticket_deleted", ticket_id=str(ticket_id))
+
+
 async def list_tickets(
     session: AsyncSession,
     status: TicketStatus | None = None,
