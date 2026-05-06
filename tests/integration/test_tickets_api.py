@@ -349,6 +349,52 @@ async def test_update_ticket_invalid_uuid_returns_422(
     assert "detail" in data
 
 
+# ============== DELETE TICKET ===================
+async def test_delete_ticket_return_204(
+    client: AsyncClient,
+    sample_ticket: dict[str, Any],
+) -> None:
+    """DELETE /api/v1/tickets/{ticket_id} deletes ticket and return 204."""
+    # Arrange + Act
+    response = await client.delete(f"/api/v1/tickets/{sample_ticket['id']}")
+
+    # Assert
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert response.content == b""
+
+
+async def test_delete_ticket_confirm_deletion(
+    client: AsyncClient,
+    sample_ticket: dict[str, Any],
+) -> None:
+    """DELETE /api/v1/tickets/{ticket_id} GET after DELETE returns 404."""
+    # Arrenge
+    ticket_id = str(sample_ticket["id"])
+
+    # Act 1
+    await client.delete(f"/api/v1/tickets/{ticket_id}")
+
+    # Act 2
+    response_2 = await client.get(f"/api/v1/tickets/{ticket_id}")
+
+    # Assert
+    assert response_2.status_code == status.HTTP_404_NOT_FOUND
+    data = response_2.json()
+    assert "not found" in data["detail"]
+    assert ticket_id in data["detail"]
+
+
+async def test_delete_ticket_non_existing_ticket_return_404(
+    client: AsyncClient,
+) -> None:
+    """DELETE /api/v1/tickets/{ticket} for non-existing ticket returns 404."""
+    # Assert + Act
+    response = await client.delete(f"/api/v1/tickets/{uuid.uuid4()}")
+
+    # Assert
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
 # ============== GET LIST OF TICKETS===================
 async def test_get_ticket_list_returns_200(
     client: AsyncClient,
