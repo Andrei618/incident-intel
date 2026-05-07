@@ -5,7 +5,11 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from incident_intel.exceptions import ServiceNotFoundError, TicketNotFoundError
+from incident_intel.exceptions import (
+    BusinessRuleViolationError,
+    ServiceNotFoundError,
+    TicketNotFoundError,
+)
 from incident_intel.models.service import Service
 from incident_intel.models.ticket import TicketPriority, TicketStatus
 from incident_intel.schemas.ticket import (
@@ -13,6 +17,7 @@ from incident_intel.schemas.ticket import (
     TicketUpdate,
 )
 from incident_intel.services.ticket_service import (
+    _validate_transition,
     create_ticket,
     get_ticket,
     list_tickets,
@@ -160,14 +165,13 @@ async def test_update_ticket_status_resolved_sets_resolved_at(
     assert created_ticket.status == TicketStatus.OPEN
     assert created_ticket.resolved_at is None
 
-    update_data = TicketUpdate(status=TicketStatus.RESOLVED)
-
     # Act
-    updated_ticket = await update_ticket(
-        session=test_session,
-        ticket_id=created_ticket.id,
-        update_data=update_data,
-    )
+    for next_status in [TicketStatus.IN_PROGRESS, TicketStatus.RESOLVED]:
+        updated_ticket = await update_ticket(
+            session=test_session,
+            ticket_id=created_ticket.id,
+            update_data=TicketUpdate(status=next_status),
+        )
 
     # Assert after updating
     assert updated_ticket.status == TicketStatus.RESOLVED
@@ -303,60 +307,6 @@ async def test_update_ticket_status_closed_sets_closed_at(
     assert updated_ticket.closed_at is not None
 
 
-async def test_update_ticket_status_open_clears_resolved_at(
-    test_session: AsyncSession,
-    sample_service: Service,
-) -> None:
-    """Test ticket service clears resolved time if status is set to "open.
-
-    Verifies resolved_at is auto-set on status change to "resolved"/"open".
-    Needs the chain of statuses:
-        "open" (resolved_at is None) ->
-        "resolved" (resolved_at is not None) ->
-        "open" again (resolved_at is None).
-    """
-    # Arrange
-    data = TicketCreate(
-        service_id=sample_service.id,
-        title="Test",
-        priority=TicketPriority.P1,
-    )
-    # status default - "open"
-    created_ticket = await create_ticket(session=test_session, data=data)
-
-    # Verify initial state
-    assert created_ticket.status == TicketStatus.OPEN
-    assert created_ticket.resolved_at is None
-
-    # status - "resolved"
-    update_data = TicketUpdate(status=TicketStatus.RESOLVED)
-
-    # Act 1
-    updated_ticket = await update_ticket(
-        session=test_session,
-        ticket_id=created_ticket.id,
-        update_data=update_data,
-    )
-
-    # Assert after updating
-    assert updated_ticket.status == TicketStatus.RESOLVED
-    assert updated_ticket.resolved_at is not None
-
-    # status - "open"
-    update_data = TicketUpdate(status=TicketStatus.OPEN)
-
-    # Act 2
-    updated_ticket = await update_ticket(
-        session=test_session,
-        ticket_id=created_ticket.id,
-        update_data=update_data,
-    )
-
-    # Assert after updating
-    assert updated_ticket.status == TicketStatus.OPEN
-    assert updated_ticket.resolved_at is None
-
-
 async def test_update_ticket_status_in_progress_clears_resolved_at(
     test_session: AsyncSession,
     sample_service: Service,
@@ -382,15 +332,13 @@ async def test_update_ticket_status_in_progress_clears_resolved_at(
     assert created_ticket.status == TicketStatus.OPEN
     assert created_ticket.resolved_at is None
 
-    # status - "resolved"
-    update_data = TicketUpdate(status=TicketStatus.RESOLVED)
-
-    # Act 1
-    updated_ticket = await update_ticket(
-        session=test_session,
-        ticket_id=created_ticket.id,
-        update_data=update_data,
-    )
+    # Act
+    for next_status in [TicketStatus.IN_PROGRESS, TicketStatus.RESOLVED]:
+        updated_ticket = await update_ticket(
+            session=test_session,
+            ticket_id=created_ticket.id,
+            update_data=TicketUpdate(status=next_status),
+        )
 
     # Assert after updating
     assert updated_ticket.status == TicketStatus.RESOLVED
@@ -479,7 +427,7 @@ async def test_list_tickets_filter_by_status(
     created_ticket_2 = await create_ticket(session=test_session, data=data_2)
 
     # - change status of second ticket to "resolved"
-    update_data = TicketUpdate(status=TicketStatus.RESOLVED)
+    update_data = TicketUpdate(status=TicketStatus.IN_PROGRESS)
     await update_ticket(
         session=test_session,
         ticket_id=created_ticket_2.id,
@@ -622,3 +570,54 @@ async def test_list_tickets_pagination(test_session: AsyncSession, sample_servic
     # Assert 2
     assert len(tickets) == 1
     assert total == 3
+
+
+def test_validate_transition_open_to_in_progress_allowed() -> None:
+    """No raise = allowed."""
+    _validate_transition(TicketStatus.OPEN, TicketStatus.IN_PROGRESS)
+
+
+def test_validate_transition_open_to_resolved_blocked() -> None:
+    """Raise = blocked."""
+    with pytest.raises(BusinessRuleViolationError, match=r"open.*resolved"):
+        _validate_transition(TicketStatus.OPEN, TicketStatus.RESOLVED)
+
+
+def test_validate_transition_in_progress_to_resolved_allowed() -> None:
+    """No raise = allowed."""
+    _validate_transition(TicketStatus.IN_PROGRESS, TicketStatus.RESOLVED)
+
+
+def test_validate_transition_in_progress_to_closed_blocked() -> None:
+    """Raise = blocked."""
+    with pytest.raises(BusinessRuleViolationError, match=r"in_progress.*closed"):
+        _validate_transition(TicketStatus.IN_PROGRESS, TicketStatus.CLOSED)
+
+
+def test_validate_transition_resolved_to_closed_allowed() -> None:
+    """No raise = allowed."""
+    _validate_transition(TicketStatus.RESOLVED, TicketStatus.CLOSED)
+
+
+def test_validate_transition_resolved_to_open_blocked() -> None:
+    """Raise = blocked."""
+    with pytest.raises(BusinessRuleViolationError, match=r"resolved.*open"):
+        _validate_transition(TicketStatus.RESOLVED, TicketStatus.OPEN)
+
+
+def test_validate_transition_closed_to_open_blocked() -> None:
+    """Raise = blocked."""
+    with pytest.raises(BusinessRuleViolationError, match=r"closed.*open"):
+        _validate_transition(TicketStatus.CLOSED, TicketStatus.OPEN)
+
+
+def test_validate_transition_closed_to_in_progress_blocked() -> None:
+    """Raise = blocked."""
+    with pytest.raises(BusinessRuleViolationError, match=r"closed.*in_progress"):
+        _validate_transition(TicketStatus.CLOSED, TicketStatus.IN_PROGRESS)
+
+
+def test_validate_transition_closed_to_resolved_blocked() -> None:
+    """Raise = blocked."""
+    with pytest.raises(BusinessRuleViolationError, match=r"closed.*resolved"):
+        _validate_transition(TicketStatus.CLOSED, TicketStatus.RESOLVED)
