@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { statusColor, priorityColor } from "@/utils/colors";
 import { formatTimestamp } from "@/utils/formatTimestamp";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { queryKey } from "@/lib/queryKeys";
 
 type TicketResponse = components["schemas"]["TicketResponse"];
 
@@ -21,7 +22,7 @@ export default function TicketDetailPage() {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["ticket", ticketId],
+    queryKey: queryKey.tickets.detail(ticketId!),
     queryFn: () => apiClient.get<TicketResponse>(`/api/v1/tickets/${ticketId}`),
     enabled: !!ticketId,
   });

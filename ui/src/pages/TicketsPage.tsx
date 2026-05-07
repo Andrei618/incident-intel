@@ -13,6 +13,7 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { TicketCard } from "@/components/TicketCard";
+import { queryKey } from "@/lib/queryKeys";
 
 type TicketListResponse = components["schemas"]["TicketListResponse"];
 
@@ -32,7 +33,7 @@ export default function TicketsPage() {
   const url = `/api/v1/tickets?${params}`;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["tickets", status, priority],
+    queryKey: queryKey.tickets.list({ status, priority }),
     queryFn: () => apiClient.get<TicketListResponse>(url),
   });
 

@@ -1,9 +1,9 @@
-export const queruKey = {
+export const queryKey = {
   tickets: {
     all: () => ["tickets"] as const,
     list: (filters: Record<string, unknown>) =>
       ["tickets", "list", filters] as const,
-    detail: (id: string) => ["ticketts", id] as const,
+    detail: (id: string) => ["tickets", id] as const,
   },
   documents: {
     all: () => ["documents"] as const,
@@ -15,4 +15,7 @@ export const queruKey = {
     results: (query: string, method: string) =>
       ["search", query, method] as const,
   },
+  services: {
+    all: () => ["services"] as const,
+  }
 } as const;

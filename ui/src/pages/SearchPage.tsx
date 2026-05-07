@@ -9,6 +9,7 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import { Markdown } from "@/components/Markdown";
+import { queryKey } from "@/lib/queryKeys";
 
 type SearchResponse = components["schemas"]["SearchResponse"];
 
@@ -25,7 +26,7 @@ export default function SearchPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["search", query, method],
+    queryKey: queryKey.search.results(query, method),
     queryFn: () => apiClient.get<SearchResponse>(url),
     enabled: query.trim().length > 0,
   });

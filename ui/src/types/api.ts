@@ -80,6 +80,36 @@ export interface paths {
          */
         put: operations["update_ticket_endpoint_api_v1_tickets__ticket_id__put"];
         post?: never;
+        /**
+         * Delete Ticket Endpoint
+         * @description Delete ticket by ID.
+         *
+         *     Raises:
+         *         HTTPException(404) if ticket not found.
+         */
+        delete: operations["delete_ticket_endpoint_api_v1_tickets__ticket_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Services Endpoint
+         * @description List services.
+         *
+         *     Returns:
+         *         list[Services]
+         */
+        get: operations["list_services_endpoint_api_v1_services_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -470,6 +500,26 @@ export interface components {
             score: number;
         };
         /**
+         * ServiceResponse
+         * @description Response schema for a single service.
+         */
+        ServiceResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
          * SourceItem
          * @description Schema for detailed representation of one matching source.
          */
@@ -824,6 +874,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ticket_endpoint_api_v1_tickets__ticket_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_services_endpoint_api_v1_services_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceResponse"][];
                 };
             };
         };
