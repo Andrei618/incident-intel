@@ -38,7 +38,7 @@ export default function SearchPage() {
   }
 
   return (
-    <div className={`${CONTENT_MAX_WIDTH}`}>
+    <div className={CONTENT_MAX_WIDTH}>
       <form onSubmit={handleSearch} className="space-y-3">
         <Input
           value={input}
