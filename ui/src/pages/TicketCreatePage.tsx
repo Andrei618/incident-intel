@@ -1,8 +1,8 @@
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useServices } from "@/hooks/useServices";
 import { useTicketCreate } from "@/hooks/useTicketMutations";
 import { ticketCreateSchema, type TicketCreate } from "@/schemas/tickets";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod"
 import { TicketForm } from "@/components/TicketForm";
 import { CONTENT_MAX_WIDTH } from "@/lib/constants";
 
@@ -13,22 +13,20 @@ export default function TicketCreatePage() {
   const { services } = useServices();
   const { mutate, isPending } = useTicketCreate();
 
-
-
   return (
     <div className={CONTENT_MAX_WIDTH}>
-        <h1 className="text-2xl font-bold mb-6">New Ticket</h1>
-        <form onSubmit={form.handleSubmit(data => mutate(data))}>
-            <TicketForm<TicketCreate>
-                register={form.register}
-                errors={form.formState.errors}
-                control={form.control}
-                isPending={isPending}
-                submitLabel="Save"
-                mode="create"
-                services={services ?? []}
-            />
-        </form>
+      <h1 className="text-2xl font-bold mb-6">New Ticket</h1>
+      <form onSubmit={form.handleSubmit((data) => mutate(data))}>
+        <TicketForm<TicketCreate>
+          register={form.register}
+          errors={form.formState.errors}
+          control={form.control}
+          isPending={isPending}
+          submitLabel="Save"
+          mode="create"
+          services={services ?? []}
+        />
+      </form>
     </div>
   );
 }

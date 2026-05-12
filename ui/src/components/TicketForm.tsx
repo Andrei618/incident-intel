@@ -101,7 +101,7 @@ export function TicketForm<T extends FieldValues>({
       )}
       <Input {...register("assignee" as Path<T>)} placeholder="Assignee" />
       <Input {...register("reporter" as Path<T>)} placeholder="Reporter" />
-      <Button type="submit" disabled={isPending}>
+      <Button type="submit" disabled={isPending} className="ml-auto">
         {submitLabel}
       </Button>
     </div>
