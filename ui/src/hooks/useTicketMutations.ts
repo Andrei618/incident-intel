@@ -73,10 +73,7 @@ export function useTicketTransition(ticketId: string) {
 
   const { mutate, isPending } = useMutation({
     mutationFn: async (data: { status: string }) => {
-      return apiClient.put<TicketResponse>(
-        `/api/v1/tickets/${ticketId}`,
-        data
-      );
+      return apiClient.put<TicketResponse>(`/api/v1/tickets/${ticketId}`, data);
     },
     onSuccess: () => {
       toast.success("Status updated");

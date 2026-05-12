@@ -16,7 +16,7 @@ import { TicketCard } from "@/components/TicketCard";
 import { queryKey } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { Plus, PlusCircle } from "lucide-react"
+import { Plus, PlusCircle } from "lucide-react";
 
 type TicketListResponse = components["schemas"]["TicketListResponse"];
 
@@ -83,7 +83,10 @@ export default function TicketsPage() {
           </Select>
         </label>
         <Button asChild className="ml-auto">
-          <Link to="new"><Plus className="mr-2 h-4 w-4" />New Ticket</Link>
+          <Link to="new">
+            <Plus className="mr-2 h-4 w-4" />
+            New Ticket
+          </Link>
         </Button>
       </div>
 
@@ -100,11 +103,11 @@ export default function TicketsPage() {
         <p className="text-sm text-muted-foreground mb-3">
           Found {data.total} {data.total === 1 ? "ticket" : "tickets"}
         </p>
-        )}
+      )}
       {data && data.items.length > 0 && (
         <div className="space-y-3">
           {data.items.map((item) => (
-            <TicketCard key={item.id} ticket={item}/>
+            <TicketCard key={item.id} ticket={item} />
           ))}
         </div>
       )}
