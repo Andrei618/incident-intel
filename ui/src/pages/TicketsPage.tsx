@@ -16,7 +16,7 @@ import { TicketCard } from "@/components/TicketCard";
 import { queryKey } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { Plus, PlusCircle } from "lucide-react";
+import { Plus } from "lucide-react";
 
 type TicketListResponse = components["schemas"]["TicketListResponse"];
 

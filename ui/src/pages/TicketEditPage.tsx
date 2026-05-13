@@ -7,19 +7,22 @@ import { useParams } from "react-router-dom";
 import { useTicket } from "@/hooks/useTicket";
 import { TicketForm } from "@/components/TicketForm";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { Form } from "@/components/ui/form";
 
 export default function TicketEditPage() {
   const { ticketId } = useParams<{ ticketId: string }>();
   const { ticket, isLoading, error } = useTicket(ticketId!);
   const form = useForm<TicketUpdate>({
     resolver: zodResolver(ticketUpdateSchema),
-    values: ticket ? {
-        title: ticket.title,
-        description: ticket.description ?? undefined,
-        priority: ticket.priority,
-        assignee: ticket.assignee ?? undefined,
-        reporter: ticket.reporter ?? undefined,
-    } : undefined,
+    values: ticket
+      ? {
+          title: ticket.title,
+          description: ticket.description ?? undefined,
+          priority: ticket.priority,
+          assignee: ticket.assignee ?? undefined,
+          reporter: ticket.reporter ?? undefined,
+        }
+      : undefined,
   });
   const { mutate, isPending } = useTicketUpdate(ticketId!);
 
@@ -27,19 +30,19 @@ export default function TicketEditPage() {
   if (error) return <p className="text-destructive">Error: {error.message}</p>;
 
   return (
-    <div className={CONTENT_MAX_WIDTH}>
-      <h1 className="text-2xl font-bold mb-6">Edit Ticket</h1>
-      <form onSubmit={form.handleSubmit((data) => mutate(data))}>
-        <TicketForm<TicketUpdate>
-          register={form.register}
-          errors={form.formState.errors}
-          control={form.control}
-          isPending={isPending}
-          submitLabel="Save changes"
-          mode="edit"
-          services={[]}
-        />
-      </form>
-    </div>
+    <Form {...form}>
+      <div className={CONTENT_MAX_WIDTH}>
+        <h1 className="text-2xl font-bold mb-6">Edit Ticket</h1>
+        <form onSubmit={form.handleSubmit((data) => mutate(data))}>
+          <TicketForm<TicketUpdate>
+            control={form.control}
+            isPending={isPending}
+            submitLabel="Save changes"
+            mode="edit"
+            services={[]}
+          />
+        </form>
+      </div>
+    </Form>
   );
 }
