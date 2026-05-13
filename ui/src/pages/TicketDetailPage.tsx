@@ -12,6 +12,8 @@ import { useTicket } from "@/hooks/useTicket";
 import { useServices } from "@/hooks/useServices";
 import { nextStates, TRANSITION_LABELS } from "@/lib/ticketTransitions";
 import { useTicketTransition } from "@/hooks/useTicketMutations";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
+import { useTicketDelete } from "@/hooks/useTicketMutations";
 
 export default function TicketDetailPage() {
   const { ticketId } = useParams<{ ticketId: string }>();
@@ -22,6 +24,9 @@ export default function TicketDetailPage() {
     ticket?.service_id;
   const { mutate: transition, isPending: isTransitioning } =
     useTicketTransition(ticketId!);
+  const { mutate: deleteTicket, isPending: isDeleting } = useTicketDelete(
+    ticketId!
+  );
 
   if (!ticketId) return <p>Invalid URL</p>;
 
@@ -47,11 +52,19 @@ export default function TicketDetailPage() {
     <div className={CONTENT_MAX_WIDTH}>
       <div className="flex items-center justify-between mb-6">
         <Link to="/tickets">← Back to tickets</Link>
-        {ticket.status !== "closed" && (
-          <Button variant="outline" asChild>
-            <Link to={`/tickets/${ticketId}/edit`}>Edit</Link>
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {ticket.status !== "closed" && (
+            <Button variant="outline" asChild>
+              <Link to={`/tickets/${ticketId}/edit`}>Edit</Link>
+            </Button>
+          )}
+          <DeleteConfirmDialog
+            title="Delete ticket"
+            description="This action cannot be undone."
+            onConfirm={() => deleteTicket()}
+            isPending={isDeleting}
+          />
+        </div>
       </div>
 
       <div>
