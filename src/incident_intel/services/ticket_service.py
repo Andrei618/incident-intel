@@ -14,7 +14,7 @@ from incident_intel.exceptions import (
     ServiceNotFoundError,
     TicketNotFoundError,
 )
-from incident_intel.models.ticket import Ticket, TicketPriority, TicketStatus
+from incident_intel.models.ticket import VALID_TRANSITIONS, Ticket, TicketPriority, TicketStatus
 from incident_intel.schemas.ticket import TicketCreate, TicketUpdate
 
 logger = get_logger(__name__)
@@ -105,10 +105,21 @@ async def get_ticket(
     return ticket
 
 
-def _apply_lifecycle_timestamps(ticket: Ticket, new_status: TicketStatus) -> None:
-    """Set/clear lifecycle timestamps based on status transition.
+def _validate_transition(old: TicketStatus, new: TicketStatus) -> None:
+    """Raise BusinessRuleViolationError if `old → new` is not allowed.
 
-    Transition validation (e.g., open -> closed not allowed) is omitted for simplicity.
+    Caller must filter out same-status before calling.
+    """
+    if new not in VALID_TRANSITIONS[old]:
+        logger.warning("ticket_invalid_transition", old=old.value, new=new.value)
+        raise BusinessRuleViolationError(f"Invalid status transition: {old.value} -> {new.value}")
+
+
+def _apply_lifecycle_timestamps(ticket: Ticket, new_status: TicketStatus) -> None:
+    """Set/clear lifecycle timestamps for a status change.
+
+    Transition validity is enforced separately by `_validate_transition`;
+    this function assumes `new_status` is a legal transition from the current one.
     """
     if new_status == TicketStatus.OPEN:
         ticket.resolved_at = None
@@ -160,7 +171,10 @@ async def update_ticket(
     )
 
     if "status" in update_dict:
-        _apply_lifecycle_timestamps(ticket, update_dict["status"])
+        new_status = update_dict["status"]
+        if new_status != ticket.status:
+            _validate_transition(ticket.status, new_status)
+            _apply_lifecycle_timestamps(ticket, new_status)
 
     # Update each field
     for field, value in update_dict.items():
