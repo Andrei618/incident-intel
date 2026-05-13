@@ -5,6 +5,7 @@ import { useTicketCreate } from "@/hooks/useTicketMutations";
 import { ticketCreateSchema, type TicketCreate } from "@/schemas/tickets";
 import { TicketForm } from "@/components/TicketForm";
 import { CONTENT_MAX_WIDTH } from "@/lib/constants";
+import { Form } from "@/components/ui/form"
 
 export default function TicketCreatePage() {
   const form = useForm<TicketCreate>({
@@ -14,19 +15,19 @@ export default function TicketCreatePage() {
   const { mutate, isPending } = useTicketCreate();
 
   return (
-    <div className={CONTENT_MAX_WIDTH}>
-      <h1 className="text-2xl font-bold mb-6">New Ticket</h1>
-      <form onSubmit={form.handleSubmit((data) => mutate(data))}>
-        <TicketForm<TicketCreate>
-          register={form.register}
-          errors={form.formState.errors}
-          control={form.control}
-          isPending={isPending}
-          submitLabel="Save"
-          mode="create"
-          services={services ?? []}
-        />
-      </form>
-    </div>
+    <Form {...form}>
+      <div className={CONTENT_MAX_WIDTH}>
+        <h1 className="text-2xl font-bold mb-6">New Ticket</h1>
+        <form onSubmit={form.handleSubmit((data) => mutate(data))}>
+          <TicketForm<TicketCreate>
+            control={form.control}
+            isPending={isPending}
+            submitLabel="Save"
+            mode="create"
+            services={services ?? []}
+          />
+        </form>
+      </div>
+    </Form>
   );
 }

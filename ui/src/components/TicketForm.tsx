@@ -1,11 +1,11 @@
-import type {
-  UseFormRegister,
-  FieldErrors,
-  Control,
-  Path,
-  FieldValues,
-} from "react-hook-form";
-import { Controller } from "react-hook-form";
+import type { Control, Path, FieldValues } from "react-hook-form";
+import {
+  FormField,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,8 +21,6 @@ import type { components } from "@/types/api";
 type ServiceResponse = components["schemas"]["ServiceResponse"];
 
 interface TicketFormProps<T extends FieldValues> {
-  register: UseFormRegister<T>;
-  errors: FieldErrors<T>;
   control: Control<T>;
   isPending: boolean;
   submitLabel: string;
@@ -31,8 +29,6 @@ interface TicketFormProps<T extends FieldValues> {
 }
 
 export function TicketForm<T extends FieldValues>({
-  register,
-  errors,
   control,
   isPending,
   submitLabel,
@@ -41,66 +37,118 @@ export function TicketForm<T extends FieldValues>({
 }: TicketFormProps<T>) {
   return (
     <div className="flex flex-col gap-4">
-      <Input {...register("title" as Path<T>)} placeholder="Title" />
-      {errors.title?.message && (
-        <p className="text-sm text-destructive">
-          {String(errors.title.message)}
-        </p>
-      )}
-      <Textarea
-        {...register("description" as Path<T>)}
-        placeholder="Description (optional)"
+      <FormField
+        control={control}
+        name={"title" as Path<T>}
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Title</FormLabel>
+            <FormControl>
+              <Input placeholder="Title" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
       />
-      <Controller
+
+      <FormField
+        control={control}
+        name={"description" as Path<T>}
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Description</FormLabel>
+            <FormControl>
+              <Textarea placeholder="Description (optional)" {...field} />
+            </FormControl>
+          </FormItem>
+        )}
+      />
+
+      <FormField
         control={control}
         name={"priority" as Path<T>}
         render={({ field }) => (
-          <Select value={field.value ?? ""} onValueChange={field.onChange}>
-            <SelectTrigger className="w-full" aria-label="Priority">
-              <SelectValue placeholder="Select priority" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="p1">P1 - Critical</SelectItem>
-              <SelectItem value="p2">P2 - High</SelectItem>
-              <SelectItem value="p3">P3 - Medium</SelectItem>
-              <SelectItem value="p4">P4 - Low</SelectItem>
-            </SelectContent>
-          </Select>
+          <FormItem>
+            <FormLabel>Priority</FormLabel>
+            <Select value={field.value ?? ""} onValueChange={field.onChange}>
+              <FormControl>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                <SelectItem value="p1">P1 - Critical</SelectItem>
+                <SelectItem value="p2">P2 - High</SelectItem>
+                <SelectItem value="p3">P3 - Medium</SelectItem>
+                <SelectItem value="p4">P4 - Low</SelectItem>
+              </SelectContent>
+            </Select>
+            <FormMessage />
+          </FormItem>
         )}
       />
-      {errors.priority?.message && (
-        <p className="text-sm text-destructive">
-          {String(errors.priority.message)}
-        </p>
-      )}
+
       {mode === "create" && (
-        <Controller
+        <FormField
           control={control}
           name={"service_id" as Path<T>}
           render={({ field }) => (
-            <Select value={field.value ?? ""} onValueChange={field.onChange}>
-              <SelectTrigger className="w-full" aria-label="Service">
-                <SelectValue placeholder="Select service" />
-              </SelectTrigger>
-              <SelectContent>
-                {services.length === 0 ? (
-                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                    No services available
-                  </div>
-                ) : (
-                  services.map((service) => (
-                    <SelectItem key={service.id} value={service.id}>
-                      {service.name}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
+            <FormItem>
+              <FormLabel>Service</FormLabel>
+              <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                <FormControl>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select service" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {services.length === 0 ? (
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                      No services available
+                    </div>
+                  ) : (
+                    services.map((service) => (
+                      <SelectItem key={service.id} value={service.id}>
+                        {service.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
           )}
         />
       )}
-      <Input {...register("assignee" as Path<T>)} placeholder="Assignee" />
-      <Input {...register("reporter" as Path<T>)} placeholder="Reporter" />
+
+      <FormField
+        control={control}
+        name={"assignee" as Path<T>}
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Assignee</FormLabel>
+            <FormControl>
+              <Input placeholder="Assignee" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <FormField
+        control={control}
+        name={"reporter" as Path<T>}
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Reporter</FormLabel>
+            <FormControl>
+              <Input placeholder="Reporter" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
       <Button type="submit" disabled={isPending} className="ml-auto">
         {submitLabel}
       </Button>
