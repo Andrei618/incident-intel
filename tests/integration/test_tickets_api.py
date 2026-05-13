@@ -224,6 +224,22 @@ async def test_update_ticket_non_existing_ticket_returns_404(
     assert ticket_id in data["detail"]
 
 
+async def test_update_ticket_with_invalid_transition_returns_400(
+    client: AsyncClient,
+    sample_ticket: dict[str, Any],
+) -> None:
+    """PUT /api/v1/tickets with invalid transition (open → resolved) returns 400."""
+    # Arrange
+    ticket_id = sample_ticket["id"]
+    payload = {"status": "resolved"}
+
+    # Act
+    response = await client.put(f"/api/v1/tickets/{ticket_id}", json=payload)
+
+    # Assert
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
 async def test_update_ticket_status_to_resolved_sets_resolved_at(
     client: AsyncClient,
     sample_ticket: dict[str, Any],
@@ -234,6 +250,7 @@ async def test_update_ticket_status_to_resolved_sets_resolved_at(
     assert sample_ticket["resolved_at"] is None
 
     # Act
+    response = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "in_progress"})
     response = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "resolved"})
 
     # Assert — resolved_at should be auto-set
@@ -253,10 +270,12 @@ async def test_update_ticket_status_to_open_clears_resolved_at(
     assert sample_ticket["resolved_at"] is None
 
     # Act 1
+    await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "in_progress"})
     response_1 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "resolved"})
     assert response_1.status_code == status.HTTP_200_OK
 
     # Act 2
+    await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "in_progress"})
     response_2 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "open"})
 
     # Assert
@@ -304,33 +323,6 @@ async def test_update_ticket_status_closed_sets_closed_at(
     assert data["started_at"] is not None
     assert data["resolved_at"] is not None
     assert data["closed_at"] is not None
-
-
-async def test_update_ticket_status_to_resolved_again_updates_resolved_at(
-    client: AsyncClient,
-    sample_ticket: dict[str, Any],
-) -> None:
-    """PUT /api/v1/tickets/{ticket_id} updates resolved_at when status become "resolved" again."""
-    # Arrange
-    ticket_id = sample_ticket["id"]
-    assert sample_ticket["resolved_at"] is None
-
-    # Act 1
-    response_1 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "resolved"})
-    assert response_1.status_code == status.HTTP_200_OK
-    data_1 = response_1.json()
-    resolved_at_1 = data_1["resolved_at"]
-
-    # Act 2
-    response_2 = await client.put(f"/api/v1/tickets/{ticket_id}", json={"status": "resolved"})
-
-    # Assert
-    assert response_2.status_code == status.HTTP_200_OK
-    data_2 = response_2.json()
-    resolved_at_2 = data_2["resolved_at"]
-    assert data_2["status"] == "resolved"
-    assert data_2["resolved_at"] is not None
-    assert resolved_at_2 != resolved_at_1
 
 
 async def test_update_ticket_invalid_uuid_returns_422(

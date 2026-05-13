@@ -13,6 +13,10 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { TicketCard } from "@/components/TicketCard";
+import { queryKey } from "@/lib/queryKeys";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
+import { Plus } from "lucide-react";
 
 type TicketListResponse = components["schemas"]["TicketListResponse"];
 
@@ -32,12 +36,12 @@ export default function TicketsPage() {
   const url = `/api/v1/tickets?${params}`;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["tickets", status, priority],
+    queryKey: queryKey.tickets.list({ status, priority }),
     queryFn: () => apiClient.get<TicketListResponse>(url),
   });
 
   return (
-    <div className={`${CONTENT_MAX_WIDTH}`}>
+    <div className={CONTENT_MAX_WIDTH}>
       <div className="flex flex-wrap gap-4 mb-4">
         <label className="text-sm flex flex-col gap-1">
           Status
@@ -78,6 +82,12 @@ export default function TicketsPage() {
             </SelectContent>
           </Select>
         </label>
+        <Button asChild className="ml-auto">
+          <Link to="new">
+            <Plus className="mr-2 h-4 w-4" />
+            New Ticket
+          </Link>
+        </Button>
       </div>
 
       {isLoading && (
@@ -93,11 +103,11 @@ export default function TicketsPage() {
         <p className="text-sm text-muted-foreground mb-3">
           Found {data.total} {data.total === 1 ? "ticket" : "tickets"}
         </p>
-        )}
+      )}
       {data && data.items.length > 0 && (
         <div className="space-y-3">
           {data.items.map((item) => (
-            <TicketCard key={item.id} ticket={item}/>
+            <TicketCard key={item.id} ticket={item} />
           ))}
         </div>
       )}

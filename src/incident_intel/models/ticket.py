@@ -38,6 +38,14 @@ class TicketStatus(str, enum.Enum):
     CLOSED = "closed"
 
 
+VALID_TRANSITIONS: dict[TicketStatus, frozenset[TicketStatus]] = {
+    TicketStatus.OPEN: frozenset({TicketStatus.IN_PROGRESS, TicketStatus.CLOSED}),
+    TicketStatus.IN_PROGRESS: frozenset({TicketStatus.RESOLVED, TicketStatus.OPEN}),
+    TicketStatus.RESOLVED: frozenset({TicketStatus.CLOSED, TicketStatus.IN_PROGRESS}),
+    TicketStatus.CLOSED: frozenset(),
+}
+
+
 class TicketPriority(str, enum.Enum):
     """Ticket priority levels with SLA implications."""
 
