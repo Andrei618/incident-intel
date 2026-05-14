@@ -1,10 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link, useSearchParams } from "react-router-dom";
 import { apiClient } from "@/lib/apiClient";
+import { useState } from "react";
+import { Plus } from "lucide-react";
 import type { components } from "@/types/api";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { CONTENT_MAX_WIDTH } from "@/lib/constants";
-import { useState } from "react";
+
 import {
   Select,
   SelectContent,
@@ -15,9 +18,10 @@ import {
 import { TicketCard } from "@/components/TicketCard";
 import { queryKey } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
-import { Plus } from "lucide-react";
 
+import { PaginationControls } from "@/components/PaginationControls";
+
+const LIMIT = 20;
 type TicketListResponse = components["schemas"]["TicketListResponse"];
 
 type TicketStatus = components["schemas"]["TicketStatus"];
@@ -29,14 +33,21 @@ type PriorityFilter = TicketPriority | "all";
 export default function TicketsPage() {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [priority, setPriority] = useState<PriorityFilter>("all");
-
-  const params = new URLSearchParams({ limit: "20" });
+  const [searchParams, setSearchParam] = useSearchParams();
+  const offset = Number(searchParams.get("offset") ?? "0");
+  const params = new URLSearchParams();
   if (status !== "all") params.set("status", status);
   if (priority !== "all") params.set("priority", priority);
+  params.set("limit", String(LIMIT));
+  params.set("offset", String(offset));
   const url = `/api/v1/tickets?${params}`;
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: queryKey.tickets.list({ status, priority }),
+  const {
+    data: tickets,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: queryKey.tickets.list({ status, priority, offset }),
     queryFn: () => apiClient.get<TicketListResponse>(url),
   });
 
@@ -47,7 +58,10 @@ export default function TicketsPage() {
           Status
           <Select
             value={status}
-            onValueChange={(value) => setStatus(value as StatusFilter)}
+            onValueChange={(value) => {
+              setStatus(value as StatusFilter);
+              setSearchParam({});
+            }}
           >
             <SelectTrigger className="w-[180px]" aria-label="Filter by status">
               <SelectValue placeholder="All statuses" />
@@ -65,7 +79,10 @@ export default function TicketsPage() {
           Priority
           <Select
             value={priority}
-            onValueChange={(value) => setPriority(value as PriorityFilter)}
+            onValueChange={(value) => {
+              setPriority(value as PriorityFilter);
+              setSearchParam({});
+            }}
           >
             <SelectTrigger
               className="w-[180px]"
@@ -99,19 +116,28 @@ export default function TicketsPage() {
         </div>
       )}
       {error && <p className="text-destructive">Error: {error.message}</p>}
-      {data && data.total > 0 && (
+      {tickets && tickets.total > 0 && (
         <p className="text-sm text-muted-foreground mb-3">
-          Found {data.total} {data.total === 1 ? "ticket" : "tickets"}
+          Found {tickets.total} {tickets.total === 1 ? "ticket" : "tickets"}
         </p>
       )}
-      {data && data.items.length > 0 && (
-        <div className="space-y-3">
-          {data.items.map((item) => (
-            <TicketCard key={item.id} ticket={item} />
-          ))}
-        </div>
+      {tickets && tickets.items.length > 0 && (
+        <>
+          <div className="space-y-3">
+            {tickets.items.map((item) => (
+              <TicketCard key={item.id} ticket={item} />
+            ))}
+          </div>
+          <div className="flex items-center gap-2 mt-4">
+            <PaginationControls
+              total={tickets.total}
+              limit={LIMIT}
+              offset={offset}
+            />
+          </div>
+        </>
       )}
-      {data && data.items.length === 0 && (
+      {tickets && tickets.items.length === 0 && (
         <EmptyState
           title="No tickets found"
           description={
