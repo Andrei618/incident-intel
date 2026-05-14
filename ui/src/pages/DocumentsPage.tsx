@@ -78,6 +78,11 @@ export default function DocumentsPage() {
         </div>
       )}
       {error && <p className="text-destructive">Error: {error.message}</p>}
+      {docs && docs.total > 0 && (
+        <p className="text-sm text-muted-foreground mb-3">
+          Found {docs.total} {docs.total === 1 ? "document" : "documents"}
+        </p>
+      )}
       {docs && docs.items.length > 0 && (
         <>
           <div className="space-y-3">
