@@ -98,7 +98,7 @@ export default function TicketsPage() {
           <LoadingSkeleton className="h-32" />
         </div>
       )}
-      {error && <p>Error: {error.message}</p>}
+      {error && <p className="text-destructive">Error: {error.message}</p>}
       {data && data.total > 0 && (
         <p className="text-sm text-muted-foreground mb-3">
           Found {data.total} {data.total === 1 ? "ticket" : "tickets"}
