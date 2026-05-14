@@ -15,6 +15,7 @@ const TicketDetailPage = lazy(() => import("@/pages/TicketDetailPage"));
 const TicketCreatePage = lazy(() => import("@/pages/TicketCreatePage"));
 const TicketEditPage = lazy(() => import("@/pages/TicketEditPage"));
 const DocumentsPage = lazy(() => import("@/pages/DocumentsPage"));
+const DocumentDetailPage = lazy(() => import("@/pages/DocumentDetailPage"))
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 
 function suspenseRoute(Component: ComponentType) {
@@ -42,6 +43,7 @@ const router = createBrowserRouter([
       { path: "chat", element: suspenseRoute(ChatPage) },
       { path: "search", element: suspenseRoute(SearchPage) },
       { path: "documents", element: suspenseRoute(DocumentsPage) },
+      { path: "documents/:documentId", element: suspenseRoute(DocumentDetailPage)},
       { path: "*", element: suspenseRoute(NotFoundPage) },
     ],
   },
