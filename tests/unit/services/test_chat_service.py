@@ -19,7 +19,72 @@ from incident_intel.schemas.classification import (
     TicketPriority,
     TicketStatus,
 )
-from incident_intel.services.chat_service import handle_chat, handle_chat_stream
+from incident_intel.services.chat_service import (
+    count_tokens,
+    get_history_window,
+    handle_chat,
+    handle_chat_stream,
+)
+
+
+def test_count_tokens_returns_exact_count_for_known_string() -> None:
+    """Test count_tokens returns exact count for known short string."""
+    # Arrange + Act
+    result = count_tokens("Hello world")
+
+    # Assert
+    assert result == 2
+
+
+def test_count_tokens_returns_zero_for_empty_string() -> None:
+    """Test count_tokens returns zero for ampty string."""
+    # Arrange + Act
+    result = count_tokens("")
+
+    # Assert
+    assert result == 0
+
+
+def test_get_history_window_all_messages_fit() -> None:
+    """Test get_history_window returns all messages if budget is large enough."""
+    # Arrange
+    msg1 = MagicMock(content="Hello world")
+    msg2 = MagicMock(content="How are you")
+    budget = 5
+
+    # Act
+    result = get_history_window([msg1, msg2], budget)
+
+    # Assert
+    assert len(result) == 2
+    assert result[0].content == "Hello world"
+    assert result[1].content == "How are you"
+
+
+def test_get_history_window_budget_exceeded() -> None:
+    """Test get_history_window returns only messages that do not exceed budget."""
+    # Arrange
+    msg1 = MagicMock(content="Hello world")
+    msg2 = MagicMock(content="How are you")
+    msg3 = MagicMock(content="I am fine")
+    budget = 6
+
+    # Act
+    result = get_history_window([msg1, msg2, msg3], budget)
+
+    # Assert
+    assert len(result) == 2
+    assert result[0].content == "How are you"
+    assert result[1].content == "I am fine"
+
+
+def test_get_history_window_empty_list() -> None:
+    """Test get_history_window returns empty list if empty list is geven."""
+    # Arrange + Act
+    result = get_history_window([], 10)
+
+    # Assert
+    assert len(result) == 0
 
 
 @patch("incident_intel.services.chat_service.classify_query", new_callable=AsyncMock)
@@ -48,6 +113,9 @@ async def test_handle_chat_hybrid_route(mock_dispatch, mock_classify_query) -> N
     test_conversation_id = uuid.uuid4()
 
     test_session = AsyncMock()
+    mock_execute_result = MagicMock()
+    mock_execute_result.scalars.return_value.all.return_value = []
+    test_session.execute.return_value = mock_execute_result
     test_session.scalar.return_value = Conversation(id=test_conversation_id)
     test_session.add = MagicMock()
     test_session.flush = AsyncMock()
@@ -165,6 +233,9 @@ async def test_handle_chat_clarify_skips_llm(mock_dispatch, mock_classify_query)
     test_conversation_id = uuid.uuid4()
 
     test_session = AsyncMock()
+    mock_execute_result = MagicMock()
+    mock_execute_result.scalars.return_value.all.return_value = []
+    test_session.execute.return_value = mock_execute_result
     test_session.scalar.return_value = Conversation(id=test_conversation_id)
     test_session.add = MagicMock()
     test_session.flush = AsyncMock()
@@ -240,6 +311,9 @@ async def test_handle_chat_rollback_on_error(mock_dispatch, mock_classify_query)
     test_conversation_id = uuid.uuid4()
 
     test_session = AsyncMock()
+    mock_execute_result = MagicMock()
+    mock_execute_result.scalars.return_value.all.return_value = []
+    test_session.execute.return_value = mock_execute_result
     test_session.scalar.return_value = Conversation(id=test_conversation_id)
     test_session.add = MagicMock()
     test_session.flush = AsyncMock()
@@ -291,6 +365,9 @@ async def test_handle_chat_stream_yields_tokens_and_done(
     test_conversation_id = uuid.uuid4()
 
     test_session = AsyncMock()
+    mock_execute_result = MagicMock()
+    mock_execute_result.scalars.return_value.all.return_value = []
+    test_session.execute.return_value = mock_execute_result
     test_session.scalar.return_value = Conversation(id=test_conversation_id)
     test_session.add = MagicMock()
     test_session.flush = AsyncMock()

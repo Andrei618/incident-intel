@@ -2,16 +2,17 @@
 
 import json
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from typing import Any
 from uuid import UUID
 
+import tiktoken
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from incident_intel.core.logging import get_logger
 from incident_intel.exceptions import ConversationNotFoundError
-from incident_intel.llm.openai_provider import OpenAIChatProvider
+from incident_intel.llm.openai_provider import OPENAI_MODEL_CHAT, OpenAIChatProvider
 from incident_intel.llm.provider import ChatMessage, ChatProvider
 from incident_intel.models.conversation import Conversation, Message, MessageRole
 from incident_intel.models.query_log import QueryLog, Route
@@ -21,9 +22,29 @@ from incident_intel.services.classification_service import classify_query
 from incident_intel.services.dispatch import dispatch
 
 logger = get_logger(__name__)
+_encoder = tiktoken.encoding_for_model(OPENAI_MODEL_CHAT)
+MAX_HISTORY_TOKENS = 4000
 
 
-def _build_messages(context: str, message: str) -> list[ChatMessage]:
+def count_tokens(text: str) -> int:
+    """Return the number of tokens in a text string."""
+    return len(_encoder.encode(text))
+
+
+def get_history_window(messages: Sequence[Message], budget: int) -> list[Message]:
+    """Get slice of newest messages that fits budget."""
+    result = []
+    accumulated = 0
+    for message in reversed(messages):
+        tokens = count_tokens(message.content)
+        if accumulated + tokens > budget:
+            break
+        accumulated += tokens
+        result.append(message)
+    return list(reversed(result))
+
+
+def _build_messages(context: str, message: str, history: list[Message]) -> list[ChatMessage]:
     """Build list of messages for chat from user message and context."""
     system_message_content = f"""\
 You are an IT operations assistant. Answer the user's question using ONLY
@@ -34,8 +55,10 @@ Do not make up information or citations not present in the provided context.
 Context:
 {context}
 """
+    history_messages = [ChatMessage(role=m.role.value, content=m.content) for m in history]
     return [
         ChatMessage(role="system", content=system_message_content),
+        *history_messages,
         ChatMessage(role="user", content=message),
     ]
 
@@ -54,6 +77,7 @@ async def _persist_chat_records(
         conversation_id=conversation_id,
         role=MessageRole.USER,
         content=message,
+        token_count=count_tokens(message),
     )
     session.add(user_message)
 
@@ -61,6 +85,7 @@ async def _persist_chat_records(
         conversation_id=conversation_id,
         role=MessageRole.ASSISTANT,
         content=answer,
+        token_count=count_tokens(answer),
     )
     session.add(assistant_message)
 
@@ -111,12 +136,21 @@ async def handle_chat(
         conversation = Conversation()
         session.add(conversation)
         await session.flush()
+        history = []
     else:
         stmt = select(Conversation).where(Conversation.id == conversation_id)
         found = await session.scalar(stmt)
         if found is None:
             raise ConversationNotFoundError(conversation_id)
         conversation = found
+        stmt_messages = (
+            select(Message)
+            .where(Message.conversation_id == conversation.id)
+            .order_by(Message.created_at)
+        )
+        result_cursor = await session.execute(stmt_messages)
+        prior_messages = result_cursor.scalars().all()
+        history = get_history_window(prior_messages, MAX_HISTORY_TOKENS)
 
     try:
         # Latency timer
@@ -148,7 +182,7 @@ async def handle_chat(
         if result.route == "clarify":
             answer = result.context
         else:
-            messages = _build_messages(result.context, message=message)
+            messages = _build_messages(result.context, message=message, history=history)
             answer = await active_provider.generate(messages=messages)
         t_generate = time.perf_counter()
         logger.info("timing_generate", duration_ms=int((t_generate - t_dispatch) * 1000))
@@ -213,12 +247,21 @@ async def handle_chat_stream(
             conversation = Conversation()
             session.add(conversation)
             await session.flush()
+            history = []
         else:
             stmt = select(Conversation).where(Conversation.id == conversation_id)
             found = await session.scalar(stmt)
             if found is None:
                 raise ConversationNotFoundError(conversation_id)
             conversation = found
+            stmt_messages = (
+                select(Message)
+                .where(Message.conversation_id == conversation.id)
+                .order_by(Message.created_at)
+            )
+            result_cursor = await session.execute(stmt_messages)
+            prior_messages = result_cursor.scalars().all()
+            history = get_history_window(prior_messages, MAX_HISTORY_TOKENS)
 
         # Latency timer
         t_start = time.perf_counter()
@@ -250,7 +293,7 @@ async def handle_chat_stream(
             answer = result.context
             yield f"data: {json.dumps({'type': 'token', 'content': answer})}\n\n"
         else:
-            messages = _build_messages(result.context, message=message)
+            messages = _build_messages(result.context, message=message, history=history)
             tokens: list[str] = []
             first_token_logged = False
             async for token in active_provider.generate_stream(messages=messages):
