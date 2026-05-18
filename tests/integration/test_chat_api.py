@@ -2,60 +2,9 @@
 
 import json
 import uuid
-from collections.abc import AsyncIterator
-from unittest.mock import AsyncMock, patch
 
-import pytest
 from fastapi import status
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-)
-
-from incident_intel.llm.provider import ChatMessage
-from incident_intel.schemas.classification import QueryIntent
-
-
-@pytest.fixture
-def mock_classify():
-    """Mock classify_query function."""
-    intent = QueryIntent(route="hybrid", confidence=0.9, document_query="test query")
-    with patch("incident_intel.services.chat_service.classify_query", return_value=intent):
-        yield intent
-
-
-@pytest.fixture
-def mock_chat_provider():
-    """Mock OpenAI provider."""
-    mock = AsyncMock()
-    mock.generate = AsyncMock(return_value="Test answer from LLM.")
-
-    test_message = ["Hello", " world"]
-
-    async def mock_async_gen(**kwargs: list[ChatMessage]) -> AsyncIterator[str]:
-        for token in test_message:
-            yield token
-
-    mock.generate_stream = mock_async_gen
-
-    with patch("incident_intel.services.chat_service.OpenAIChatProvider", return_value=mock):
-        yield mock
-
-
-@pytest.fixture
-def mock_search_session(test_engine):
-    """Creat session from engine and patch Session with it.
-
-    Workaround till implementation issue #40 "Refactor search_service to accept session parameter".
-    """
-    test_session_factory = async_sessionmaker(
-        test_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-    with patch("incident_intel.services.search_service.Session", test_session_factory):
-        yield
 
 
 async def test_chat_empty_message_422(
@@ -208,3 +157,30 @@ async def test_chat_stream_invalid_conversation_id_returns_error_event(
     assert response.headers["content-type"].startswith("text/event-stream")
     assert tokens[0]["type"] == "error"
     assert str(test_conversation_id) in tokens[0]["message"]
+
+
+async def test_chat_multi_turn_includes_history(
+    client: AsyncClient,
+    mock_classify,
+    mock_chat_provider,
+    sample_document,
+    mock_search_session,
+) -> None:
+    """POST /api/v1/chat history included in multi-turn prompt."""
+    # Arrange + Act
+    response1 = await client.post("/api/v1/chat", json={"message": "first message"})
+    conversation_id = response1.json()["conversation_id"]
+
+    response2 = await client.post(
+        "/api/v1/chat", json={"message": "second message", "conversation_id": conversation_id}
+    )
+
+    response3 = await client.post(
+        "/api/v1/chat", json={"message": "third message", "conversation_id": conversation_id}
+    )
+
+    # Assert
+    call_messages = mock_chat_provider.generate.call_args.kwargs["messages"]
+    assert any(m.content == "first message" for m in call_messages)
+    assert response2.status_code == status.HTTP_200_OK
+    assert response3.status_code == status.HTTP_200_OK
