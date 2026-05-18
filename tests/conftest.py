@@ -1,7 +1,7 @@
 """Fixtures for all tests."""
 
 import os
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -17,9 +17,11 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from incident_intel.core.database import get_session
+from incident_intel.llm.provider import ChatMessage
 from incident_intel.main import app
 from incident_intel.models.base import Base
 from incident_intel.models.service import Service
+from incident_intel.schemas.classification import QueryIntent
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -202,4 +204,45 @@ def mock_redis_client():
             new=AsyncMock(return_value=None),
         ),
     ):
+        yield
+
+
+@pytest.fixture
+def mock_classify():
+    """Mock classify_query function."""
+    intent = QueryIntent(route="hybrid", confidence=0.9, document_query="test query")
+    with patch("incident_intel.services.chat_service.classify_query", return_value=intent):
+        yield intent
+
+
+@pytest.fixture
+def mock_chat_provider():
+    """Mock OpenAI provider."""
+    mock = AsyncMock()
+    mock.generate = AsyncMock(return_value="Test answer from LLM.")
+
+    test_message = ["Hello", " world"]
+
+    async def mock_async_gen(**kwargs: list[ChatMessage]) -> AsyncIterator[str]:
+        for token in test_message:
+            yield token
+
+    mock.generate_stream = mock_async_gen
+
+    with patch("incident_intel.services.chat_service.OpenAIChatProvider", return_value=mock):
+        yield mock
+
+
+@pytest.fixture
+def mock_search_session(test_engine):
+    """Creat session from engine and patch Session with it.
+
+    Workaround till implementation issue #40 "Refactor search_service to accept session parameter".
+    """
+    test_session_factory = async_sessionmaker(
+        test_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    with patch("incident_intel.services.search_service.Session", test_session_factory):
         yield
