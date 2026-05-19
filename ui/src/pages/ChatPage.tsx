@@ -1,23 +1,58 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { ArrowUp, Square } from "lucide-react";
 import { useChatStream } from "@/lib/useChatStream";
 import { CONTENT_MAX_WIDTH } from "@/lib/constants";
-import { Link } from "react-router-dom";
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { ArrowUp, Square } from "lucide-react"
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/Markdown";
+import type { Message } from "@/types/chat";
+import { useConversation } from "@/hooks/useConversation";
 
 export default function ChatPage() {
   const { answer, sources, isStreaming, error, thinkingMs, submit, abort } =
     useChatStream();
   const [input, setInput] = useState("");
-  const [submittedMessage, setSubmittedMessage] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const conversationId = searchParams.get("conversation_id");
+  const {
+    conversation,
+    isLoading: isHydrating,
+    error: hydrationError,
+  } = useConversation(conversationId ?? "");
 
-  function handleSend(e: React.SyntheticEvent) {
+  useEffect(() => {
+    if (answer === "") return;
+    setMessages((prev) => [
+      ...prev.slice(0, -1),
+      { role: "assistant", content: answer },
+    ]);
+  }, [answer]);
+
+  useEffect(() => {
+    if (!conversation) return;
+    if (messages.length > 0) return;
+    setMessages(
+      conversation.messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }))
+    );
+  }, [conversation]);
+
+  async function handleSend(e: React.SyntheticEvent) {
     e.preventDefault();
     if (!input.trim()) return;
-    setSubmittedMessage(input);
-    submit(input);
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: input },
+      { role: "assistant", content: "" },
+    ]);
+    const newId = await submit(input, conversationId);
+    if (newId) {
+      setSearchParams({ conversation_id: newId });
+    }
     setInput("");
   }
 
@@ -28,7 +63,7 @@ export default function ChatPage() {
       className={`flex flex-col flex-1 min-h-0 ${CONTENT_MAX_WIDTH} mx-auto w-full`}
     >
       <div className="flex-1 min-h-0 overflow-y-auto py-4 space-y-4">
-        {!submittedMessage && (
+        {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center text-center text-muted-foreground gap-2">
             <p className="text-lg font-medium">
               Ask about incidents, tickets, or documentation
@@ -39,18 +74,24 @@ export default function ChatPage() {
           </div>
         )}
 
-        {submittedMessage && (
-          <div className="flex justify-end">
-            <div className="bg-primary text-primary-foreground rounded-2xl px-4 py-2 max-w-[80%]">
-              {submittedMessage}
-            </div>
+        {messages.map((msg, index) => (
+          <div
+            className={msg.role === "user" ? "flex justify-end" : ""}
+            key={index}
+          >
+            {msg.role === "user" && (
+              <div className="bg-primary text-primary-foreground rounded-2xl px-4 py-2 max-w-[80%]">
+                {msg.content}
+              </div>
+            )}
+            {msg.role === "assistant" && msg.content && (
+              <div className="bg-muted rounded-2xl px-4 py-2">
+                <Markdown>{msg.content}</Markdown>
+              </div>
+            )}
           </div>
-        )}
-        {answer && (
-          <Markdown>
-            {answer}
-          </Markdown>
-        )}
+        ))}
+
         {showThinking && (
           <p className="text-sm text-muted-foreground animate-pulse">
             Thinking...{(thinkingMs / 1000).toFixed(1)}s
@@ -92,8 +133,12 @@ export default function ChatPage() {
           variant="ghost"
           size="icon"
           aria-label={isStreaming ? "Stop" : "Send"}
-          >
-            {isStreaming ? <Square className="size-4" /> : <ArrowUp className="size-4" />}
+        >
+          {isStreaming ? (
+            <Square className="size-4" />
+          ) : (
+            <ArrowUp className="size-4" />
+          )}
         </Button>
       </form>
     </div>
