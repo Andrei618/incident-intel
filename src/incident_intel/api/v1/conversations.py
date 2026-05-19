@@ -7,11 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from incident_intel.core.database import get_session
 from incident_intel.exceptions import ConversationNotFoundError
-from incident_intel.models.conversation import Conversation
+from incident_intel.models.conversation import MessageRole
 from incident_intel.schemas.conversation import (
     ConversationDetailResponse,
     ConversationListResponse,
     ConversationResponse,
+    MessageResponse,
 )
 from incident_intel.services.conversation_service import (
     delete_conversation,
@@ -26,19 +27,29 @@ router = APIRouter(prefix="/conversations", tags=["conversations"])
 async def get_conversation_endpoint(
     conversation_id: UUID,
     session: AsyncSession = Depends(get_session),
-) -> Conversation:
+) -> ConversationDetailResponse:
     """Get conversation by ID.
 
     Raises:
         HTTPException (404) if conversation not gound.
     """
     try:
-        return await get_conversation(
+        conversation = await get_conversation(
             conversation_id=conversation_id,
             session=session,
         )
     except ConversationNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+
+    return ConversationDetailResponse(
+        id=conversation.id,
+        created_at=conversation.created_at,
+        messages=[
+            MessageResponse.model_validate(m)
+            for m in conversation.messages
+            if m.role != MessageRole.SYSTEM
+        ],
+    )
 
 
 @router.get("", response_model=ConversationListResponse)

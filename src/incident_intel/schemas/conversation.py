@@ -1,6 +1,7 @@
 """Pydantic schema for conversations."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,7 +13,7 @@ class MessageResponse(BaseModel):
     """Response schema for a single message in conversation."""
 
     id: UUID
-    role: MessageRole
+    role: Literal[MessageRole.USER, MessageRole.ASSISTANT]  # excludes SYSTEM
     content: str
     created_at: datetime
 
