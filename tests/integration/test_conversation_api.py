@@ -5,6 +5,9 @@ import uuid
 import pytest
 from fastapi import status
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from incident_intel.models.conversation import Message, MessageRole
 
 
 @pytest.fixture
@@ -61,6 +64,31 @@ async def test_get_conversation_not_found_returns_404(
     assert response.status_code == status.HTTP_404_NOT_FOUND
     data = response.json()
     assert "not found" in data["detail"]
+
+
+async def test_get_conversation_filters_system_messages(
+    sample_conversation_id: uuid.UUID,
+    test_session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """GET /api/v1/conversations/{id} excludes system messages from response."""
+    # Arrange
+    system_message = Message(
+        conversation_id=sample_conversation_id,
+        role=MessageRole.SYSTEM,
+        content="internal system prompt",
+    )
+    test_session.add(system_message)
+    await test_session.commit()
+
+    # Act
+    response = await client.get(f"/api/v1/conversations/{sample_conversation_id}")
+
+    # Assert
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert all([msg["role"] != "system" for msg in data["messages"]])
+    assert len(data["messages"]) > 0
 
 
 async def test_delete_conversation_returns_204(
