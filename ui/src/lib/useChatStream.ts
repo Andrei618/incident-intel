@@ -9,13 +9,13 @@ export function useChatStream() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [thinkingMs, setThinkingMs] = useState(0);
-  const [conversationId, setConversationId] = useState<string | null>(null);
 
   const controllerRef = useRef<AbortController | null>(null);
 
-  async function submit(message: string) {
+  async function submit(message: string, conversationId?: string | null): Promise<string | null> {
     const controller = new AbortController();
     controllerRef.current = controller;
+    let newConversationId = null;
 
     // reset state
     setAnswer("");
@@ -44,7 +44,7 @@ export function useChatStream() {
       // HTTP error before stream starts
       if (!response.ok) {
         setError(`Request failed: ${response.status}`);
-        return;
+        return null;
       }
 
       // Server-side failure during streaming
@@ -53,7 +53,7 @@ export function useChatStream() {
         if (event.type === "token") {
           setAnswer((prev) => prev + event.content);
         } else if (event.type === "done") {
-          setConversationId(event.conversation_id);
+          newConversationId = event.conversation_id;
           setSources(event.sources);
           receivedTerminal = true;
         }
@@ -77,6 +77,7 @@ export function useChatStream() {
       clearInterval(timer);
       setIsStreaming(false);
     }
+    return newConversationId;
   }
   function abort() {
     controllerRef.current?.abort();

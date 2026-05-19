@@ -18,3 +18,5 @@ export type DoneEvent = {
 export type ErrorEvent = { type: "error"; message: string };
 
 export type SSEEvent = TokenEvent | DoneEvent | ErrorEvent
+
+export type Message = { role: "user" | "assistant", content: string }
