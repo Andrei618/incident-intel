@@ -13,7 +13,7 @@ export function AppLayout() {
       : "text-muted-foreground hover:text-foreground transition-colors";
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col">
       <header className="flex items-center gap-3 px-3 sm:gap-6 sm:px-6 py-3 border-b bg-background">
         <Link
           to="/"
@@ -46,7 +46,7 @@ export function AppLayout() {
           {icon}
         </Button>
       </header>
-      <main className="flex flex-col flex-1 max-w-5xl mx-auto w-full px-6 py-8">
+      <main className="flex flex-col flex-1 min-h-0 max-w-5xl mx-auto w-full px-6 py-8 overflow-y-auto">
         <Outlet />
       </main>
       <Toaster />
