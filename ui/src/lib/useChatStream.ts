@@ -12,7 +12,10 @@ export function useChatStream() {
 
   const controllerRef = useRef<AbortController | null>(null);
 
-  async function submit(message: string, conversationId?: string | null): Promise<string | null> {
+  async function submit(
+    message: string,
+    conversationId?: string | null
+  ): Promise<string | null> {
     const controller = new AbortController();
     controllerRef.current = controller;
     let newConversationId = null;
@@ -63,7 +66,7 @@ export function useChatStream() {
           receivedTerminal = true;
         }
       }
-      
+
       // Incomplete response
       if (!receivedTerminal) {
         setError("Response incomplete");
