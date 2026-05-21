@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowUp, Square } from "lucide-react";
 import { useChatStream } from "@/lib/useChatStream";
 import { CONTENT_MAX_WIDTH } from "@/lib/constants";
@@ -10,8 +10,9 @@ import { Markdown } from "@/components/Markdown";
 import type { Message } from "@/types/chat";
 import { useConversation } from "@/hooks/useConversation";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
-import { queryKey } from "@/lib/queryKeys"
+import { queryKey } from "@/lib/queryKeys";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { RelevanceBadge } from "@/components/RelevanceBadge";
 
 export default function ChatPage() {
   const { answer, sources, isStreaming, error, thinkingMs, submit, abort } =
@@ -39,9 +40,12 @@ export default function ChatPage() {
   useEffect(() => {
     if (!conversation) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMessages(prev => {
+    setMessages((prev) => {
       if (prev.length > 0) return prev;
-      return conversation.messages.map(msg => ({ role: msg.role, content: msg.content }))
+      return conversation.messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }));
     });
   }, [conversation]);
 
@@ -56,7 +60,7 @@ export default function ChatPage() {
     const newId = await submit(input, conversationId);
     if (newId) {
       setSearchParams({ conversation_id: newId });
-      queryClient.invalidateQueries({ queryKey: queryKey.conversations.all() })
+      queryClient.invalidateQueries({ queryKey: queryKey.conversations.all() });
     }
     setInput("");
   }
@@ -72,10 +76,15 @@ export default function ChatPage() {
     <div className="flex flex-1 min-h-0 w-full">
       <ConversationSidebar
         activeId={conversationId}
-        onSelect={(id) => {setMessages([]); setSearchParams({ conversation_id: id })}}
+        onSelect={(id) => {
+          setMessages([]);
+          setSearchParams({ conversation_id: id });
+        }}
         onNewChat={handleNewChat}
       />
-      <div className={`flex flex-col flex-1 min-h-0 ${CONTENT_MAX_WIDTH} mx-auto w-full`}>
+      <div
+        className={`flex flex-col flex-1 min-h-0 ${CONTENT_MAX_WIDTH} mx-auto w-full`}
+      >
         <div className="flex-1 min-h-0 overflow-y-auto py-4 space-y-4">
           {messages.length === 0 && (
             <div className="flex-1 flex flex-col items-center justify-center text-center text-muted-foreground gap-2">
@@ -87,8 +96,14 @@ export default function ChatPage() {
               </p>
             </div>
           )}
-          {conversationId && isHydrating && <LoadingSkeleton className="h-32" />}
-          {hydrationError && <p className="text-sm text-destructive">Failed to load conversation</p>}
+          {conversationId && isHydrating && (
+            <LoadingSkeleton className="h-32" />
+          )}
+          {hydrationError && (
+            <p className="text-sm text-destructive">
+              Failed to load conversation
+            </p>
+          )}
 
           {messages.map((msg, index) => (
             <div
@@ -130,7 +145,10 @@ export default function ChatPage() {
                   >
                     {s.document_title}
                   </Link>
-                  <span>{Math.round(s.relevance_score * 100)}%</span>
+                  <span className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0">
+                    Relevance:
+                    <RelevanceBadge score={s.relevance_score} method="hybrid" />
+                  </span>
                 </div>
               ))}
             </div>
