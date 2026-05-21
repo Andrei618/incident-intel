@@ -1,10 +1,13 @@
 """Integration tests for document search."""
 
+from math import sqrt
 from unittest.mock import patch
 from uuid import UUID
 
 from fastapi import status
 from httpx import AsyncClient
+
+from incident_intel.services.search_service import MIN_VECTOR_SIMILARITY
 
 
 # Custom embeddings for testing vector search
@@ -304,3 +307,77 @@ async def test_vector_search_ranks_by_similarity(
     assert data["total"] == 2
     assert data["items"][0]["document_title"] == "Test document 1"
     assert data["items"][0]["score"] > data["items"][1]["score"]
+
+
+async def test_vector_search_excludes_results_below_threshold(
+    client: AsyncClient,
+) -> None:
+    """Vector search excludes chunks whose cosine similarity is below MIN_VECTOR_SIMILARITY.
+
+    Constructs two unit-magnitude vectors with known cosine similarity to a fixed query
+    vector — one just above the threshold (kept), one just below (filtered).
+    """
+    # Arrange
+    above = MIN_VECTOR_SIMILARITY + 0.05
+    below = MIN_VECTOR_SIMILARITY - 0.05
+
+    async def threshold_test_embeddings(texts: list[str]) -> list[list[float]]:
+        """Route embedding requests to vectors with controlled cosine similarity to the query.
+
+        Query vector q = [1.0, 0, 0, ..., 0] is fixed. For unit-magnitude vectors with
+        first component v[0] and zeros elsewhere except v[1] = sqrt(1 - v[0]**2), the
+        cosine similarity to q equals v[0]. So routing on the keyword sets the score
+        exactly to `above` or `below`.
+
+        Texts containing 'above' → cosine = MIN_VECTOR_SIMILARITY + 0.05 (passes filter).
+        Texts containing 'below' → cosine = MIN_VECTOR_SIMILARITY - 0.05 (filtered out).
+        Anything else (e.g. the search query) → query vector itself.
+        """
+        results = []
+        for text in texts:
+            if "above" in text.lower():
+                # Unit vector with cosine = `above` to the query
+                results.append([above, sqrt(1 - above**2)] + [0.0] * 1534)
+            elif "below" in text.lower():
+                # Unit vector with cosine = `below` to the query
+                results.append([below, sqrt(1 - below**2)] + [0.0] * 1534)
+            else:
+                # Query vector q = [1.0, 0, 0, ..., 0] — unit vector pointing along the first axis
+                results.append([1.0] + [0.0] * 1535)
+        return results
+
+    with (
+        patch(
+            "incident_intel.services.document_service.create_embeddings",
+            side_effect=threshold_test_embeddings,
+        ),
+        patch(
+            "incident_intel.services.search_service.create_embeddings",
+            side_effect=threshold_test_embeddings,
+        ),
+    ):
+        payload_doc_1 = {
+            "title": "above",
+            "content": "above marker",
+            "doc_type": "runbook",
+        }
+        payload_doc_2 = {
+            "title": "below",
+            "content": "below marker",
+            "doc_type": "runbook",
+        }
+
+        response_create_doc_1 = await client.post("/api/v1/documents", json=payload_doc_1)
+        response_create_doc_2 = await client.post("/api/v1/documents", json=payload_doc_2)
+
+        assert response_create_doc_1.status_code == status.HTTP_201_CREATED
+        assert response_create_doc_2.status_code == status.HTTP_201_CREATED
+
+        # Act
+        response_search = await client.get("/api/v1/search?q=server connection issue&method=vector")
+
+    # Assert
+    assert response_search.status_code == status.HTTP_200_OK
+    data = response_search.json()
+    assert data["total"] == 1
+    assert data["items"][0]["document_title"] == "above"
