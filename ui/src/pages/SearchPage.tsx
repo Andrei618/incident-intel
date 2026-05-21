@@ -10,6 +10,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import { Markdown } from "@/components/Markdown";
 import { queryKey } from "@/lib/queryKeys";
+import { RelevanceBadge } from "@/components/RelevanceBadge";
 
 type SearchResponse = components["schemas"]["SearchResponse"];
 
@@ -39,11 +40,12 @@ export default function SearchPage() {
 
   return (
     <div className={CONTENT_MAX_WIDTH}>
+      <p className="text-sm text-muted-foreground mb-3">Search knowledge base documents — runbooks, guides, policies, and FAQs</p>
       <form onSubmit={handleSearch} className="space-y-3">
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Search runbooks and incident reports"
+          placeholder="Search runbooks, guides, policies, and FAQs"
         />
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">Method:</span>
@@ -71,17 +73,12 @@ export default function SearchPage() {
         </Button>
       </form>
       <div className="mt-6">
-        {!query && (
-          <p className="text-muted-foreground text-sm">
-            Search across your runbooks and incident reports
-          </p>
-        )}
         {isLoading && (
           <div className="space-y-3">
-            <LoadingSkeleton className="h-32"/>
-            <LoadingSkeleton className="h-32"/>
-            <LoadingSkeleton className="h-32"/>
-            <LoadingSkeleton className="h-32"/>
+            <LoadingSkeleton className="h-32" />
+            <LoadingSkeleton className="h-32" />
+            <LoadingSkeleton className="h-32" />
+            <LoadingSkeleton className="h-32" />
           </div>
         )}
         {error && <p>Error: {error.message}</p>}
@@ -99,8 +96,9 @@ export default function SearchPage() {
                     <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       {item.document_title}
                     </CardTitle>
-                    <span className="text-sm text-muted-foreground font-medium">
-                      Relevance: {Math.round(item.score * 100)}%
+                    <span className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0">
+                      Relevance:
+                      <RelevanceBadge score={item.score} method={method} />
                     </span>
                   </div>
                 </CardHeader>
