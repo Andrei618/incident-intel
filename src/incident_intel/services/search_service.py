@@ -20,8 +20,9 @@ logger = get_logger(__name__)
 
 REDIS_TTL = int(os.getenv("REDIS_TTL", "86400"))
 
-# Constant for Reciprocal Rank Fusion (RRF) in hybrid_search
-K = 60
+K = 60  # Constant for Reciprocal Rank Fusion (RRF) in hybrid_search
+
+MIN_VECTOR_SIMILARITY = float(os.getenv("MIN_VECTOR_SIMILARITY", "0.3"))
 
 
 async def get_or_create_embeddings(query: str) -> str:
@@ -122,10 +123,14 @@ async def vector_search(
 SELECT dc.id, dc.document_id, d.title, dc.content, dc.chunk_index,
  1 - (embedding <=> :embedding) AS score
  FROM document_chunks dc JOIN documents d ON dc.document_id = d.id
+ WHERE 1 - (embedding <=> :embedding) >= :min_similarity
  ORDER BY score DESC LIMIT :limit
 """
 
-    response = await session.execute(text(sql), {"embedding": embedding, "limit": limit})
+    response = await session.execute(
+        text(sql),
+        {"embedding": embedding, "limit": limit, "min_similarity": MIN_VECTOR_SIMILARITY},
+    )
     results = response.mappings().all()
     logger.debug("vector_search_complete", result_count=len(results))
 
