@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from incident_intel.models.conversation import MessageRole
+from incident_intel.schemas.chat import SourceItem
 
 
 class MessageResponse(BaseModel):
@@ -16,6 +17,7 @@ class MessageResponse(BaseModel):
     role: Literal[MessageRole.USER, MessageRole.ASSISTANT]  # excludes SYSTEM
     content: str
     created_at: datetime
+    sources: list[SourceItem] = []
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -92,6 +92,7 @@ async def _persist_chat_records(
     query_log = QueryLog(
         conversation_id=conversation_id,
         query_text=message,
+        message_id=assistant_message.id,
         route_used=Route(result.route),
         confidence=confidence,
         latency_ms=int((time.perf_counter() - t_start) * 1000),
