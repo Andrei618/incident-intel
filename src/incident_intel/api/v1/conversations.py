@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from incident_intel.core.database import get_session
 from incident_intel.exceptions import ConversationNotFoundError
-from incident_intel.models.conversation import MessageRole
+from incident_intel.models.conversation import Message, MessageRole
+from incident_intel.schemas.chat import SourceItem
 from incident_intel.schemas.conversation import (
     ConversationDetailResponse,
     ConversationListResponse,
@@ -21,6 +22,30 @@ from incident_intel.services.conversation_service import (
 )
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
+
+
+def _build_message_response(m: Message) -> MessageResponse | None:
+    """Build message response with sources."""
+    if m.role == MessageRole.SYSTEM:
+        return None
+    sources = [
+        SourceItem(
+            chunk_id=qs.chunk_id,
+            document_id=qs.document_chunk.document_id,
+            document_title=qs.document_chunk.document.title,
+            chunk_index=qs.document_chunk.chunk_index,
+            relevance_score=qs.relevance_score or 0.0,
+        )
+        for log in m.query_logs
+        for qs in log.query_sources
+    ]
+    return MessageResponse(
+        id=m.id,
+        role=m.role,
+        content=m.content,
+        created_at=m.created_at,
+        sources=sources,
+    )
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetailResponse)
@@ -45,9 +70,9 @@ async def get_conversation_endpoint(
         id=conversation.id,
         created_at=conversation.created_at,
         messages=[
-            MessageResponse.model_validate(m)
+            response
             for m in conversation.messages
-            if m.role != MessageRole.SYSTEM
+            if (response := _build_message_response(m)) is not None
         ],
     )
 

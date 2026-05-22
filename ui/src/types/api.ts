@@ -576,6 +576,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Sources
+             * @default []
+             */
+            sources: components["schemas"]["SourceItem"][];
         };
         /**
          * Method
