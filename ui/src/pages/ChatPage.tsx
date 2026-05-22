@@ -33,9 +33,19 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages((prev) => [
       ...prev.slice(0, -1),
-      { role: "assistant", content: answer },
+      { role: "assistant", content: answer, sources: [] },
     ]);
   }, [answer]);
+
+  useEffect(() => {
+    if (sources.length === 0) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMessages((prev) => {
+      const lastIdx = prev.findLastIndex((m) => m.role === "assistant");
+      if (lastIdx === -1) return prev;
+      return prev.map((m, i) => (i === lastIdx ? { ...m, sources } : m));
+    });
+  }, [sources]);
 
   useEffect(() => {
     if (!conversation) return;
@@ -45,6 +55,7 @@ export default function ChatPage() {
       return conversation.messages.map((msg) => ({
         role: msg.role,
         content: msg.content,
+        sources: msg.sources,
       }));
     });
   }, [conversation]);
@@ -54,8 +65,8 @@ export default function ChatPage() {
     if (!input.trim()) return;
     setMessages((prev) => [
       ...prev,
-      { role: "user", content: input },
-      { role: "assistant", content: "" },
+      { role: "user", content: input, sources: [] },
+      { role: "assistant", content: "", sources: [] },
     ]);
     const newId = await submit(input, conversationId);
     if (newId) {
@@ -120,6 +131,33 @@ export default function ChatPage() {
                   <Markdown>{msg.content}</Markdown>
                 </div>
               )}
+              {msg.role === "assistant" && msg.sources.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Sources
+                  </p>
+                  {msg.sources.map((s) => (
+                    <div
+                      key={s.chunk_id}
+                      className="flex items-center justify-between rounded bg-muted px-3 py-1.5 text-sm"
+                    >
+                      <Link
+                        to={`/documents/${s.document_id}`}
+                        className="hover:underline"
+                      >
+                        {s.document_title}
+                      </Link>
+                      <span className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0">
+                        Relevance:
+                        <RelevanceBadge
+                          score={s.relevance_score}
+                          method="hybrid"
+                        />
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
 
@@ -129,30 +167,6 @@ export default function ChatPage() {
             </p>
           )}
           {error && <p className="text-sm text-destructive">Error: {error}</p>}
-          {sources.length > 0 && (
-            <div className="mt-2 space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">
-                Sources
-              </p>
-              {sources.map((s) => (
-                <div
-                  key={s.chunk_id}
-                  className="flex items-center justify-between rounded bg-muted px-3 py-1.5 text-sm"
-                >
-                  <Link
-                    to={`/documents/${s.document_id}`}
-                    className="hover:underline"
-                  >
-                    {s.document_title}
-                  </Link>
-                  <span className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0">
-                    Relevance:
-                    <RelevanceBadge score={s.relevance_score} method="hybrid" />
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
         <form onSubmit={handleSend} className="flex gap-2 pt-4 border-t">
           <Input
