@@ -21,7 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from incident_intel.models.base import Base
 
 if TYPE_CHECKING:
-    from incident_intel.models.conversation import Conversation
+    from incident_intel.models.conversation import Conversation, Message
     from incident_intel.models.query_source import QuerySource
 
 
@@ -58,6 +58,12 @@ class QueryLog(Base):
         default=None,
         index=True,
     )
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        default=None,
+        index=True,
+    )
     query_text: Mapped[str] = mapped_column(Text)
     route_used: Mapped[Route] = mapped_column(
         SQLEnum(
@@ -81,6 +87,10 @@ class QueryLog(Base):
     )
     # Relationships
     conversation: Mapped["Conversation | None"] = relationship(
+        back_populates="query_logs",
+        lazy="selectin",
+    )
+    message: Mapped["Message | None"] = relationship(
         back_populates="query_logs",
         lazy="selectin",
     )
