@@ -51,6 +51,11 @@ async def test_get_conversation_returns_detail_conversation(
     data = response.json()
     assert data["messages"][0]["content"] == "test message"
     assert data["id"] == str(sample_conversation_id)
+    assistant_messages = [m for m in data["messages"] if m["role"] == "assistant"]
+    assert len(assistant_messages) == 1
+    assistant_msg = assistant_messages[0]
+    assert "sources" in assistant_msg
+    assert isinstance(assistant_msg["sources"], list)
 
 
 async def test_get_conversation_not_found_returns_404(
