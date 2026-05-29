@@ -10,10 +10,8 @@ import { docTypeColor } from "@/utils/colors";
 import { formatTimestamp } from "@/utils/formatTimestamp";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { useServices } from "@/hooks/useServices";
-import type { components } from "@/types/api";
 import { Markdown } from "@/components/Markdown";
-
-type DocumentDetailResponse = components["schemas"]["DocumentDetailResponse"];
+import { documentDetailSchema } from "@/schemas/api/document";
 
 export default function DocumentDetailPage() {
   const { documentId } = useParams<{ documentId: string }>();
@@ -25,7 +23,7 @@ export default function DocumentDetailPage() {
   } = useQuery({
     queryKey: queryKey.documents.detail(documentId!),
     queryFn: () =>
-      apiClient.get<DocumentDetailResponse>(`/api/v1/documents/${documentId}`),
+      apiClient.get(`/api/v1/documents/${documentId}`, documentDetailSchema),
     enabled: !!documentId,
   });
   const serviceName = services?.find((s) => s.id === doc?.service_id)?.name;

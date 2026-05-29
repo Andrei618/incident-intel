@@ -18,11 +18,10 @@ import {
 import { TicketCard } from "@/components/TicketCard";
 import { queryKey } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
-
 import { PaginationControls } from "@/components/PaginationControls";
+import { ticketListSchema } from "@/schemas/api/ticket";
 
 const LIMIT = 20;
-type TicketListResponse = components["schemas"]["TicketListResponse"];
 
 type TicketStatus = components["schemas"]["TicketStatus"];
 type StatusFilter = TicketStatus | "all";
@@ -48,7 +47,7 @@ export default function TicketsPage() {
     error,
   } = useQuery({
     queryKey: queryKey.tickets.list({ status, priority, offset }),
-    queryFn: () => apiClient.get<TicketListResponse>(url),
+    queryFn: () => apiClient.get(url, ticketListSchema),
   });
 
   return (

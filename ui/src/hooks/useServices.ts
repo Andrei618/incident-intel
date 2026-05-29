@@ -1,9 +1,7 @@
 import { apiClient } from "@/lib/apiClient";
 import { queryKey } from "@/lib/queryKeys";
-import type { components } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
-
-type ServiceResponse = components["schemas"]["ServiceResponse"];
+import { serviceListSchema } from "@/schemas/api/service";
 
 export function useServices() {
   const {
@@ -12,7 +10,7 @@ export function useServices() {
     error,
   } = useQuery({
     queryKey: queryKey.services.all(),
-    queryFn: () => apiClient.get<ServiceResponse[]>("/api/v1/services"),
+    queryFn: () => apiClient.get("/api/v1/services", serviceListSchema),
   });
   return { services, isLoading, error };
 }
