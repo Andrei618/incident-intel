@@ -1,10 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/apiClient";
 import { queryKey } from "@/lib/queryKeys";
-import type { components } from "@/types/api";
-
-type ConversationDetailResponse =
-  components["schemas"]["ConversationDetailResponse"];
+import { conversationDetailSchema } from "@/schemas/api/conversation";
 
 export function useConversation(conversationId: string) {
   const {
@@ -14,8 +11,9 @@ export function useConversation(conversationId: string) {
   } = useQuery({
     queryKey: queryKey.conversations.detail(conversationId),
     queryFn: () =>
-      apiClient.get<ConversationDetailResponse>(
-        `/api/v1/conversations/${conversationId}`
+      apiClient.get(
+        `/api/v1/conversations/${conversationId}`,
+        conversationDetailSchema
       ),
     enabled: !!conversationId,
   });

@@ -3,10 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { queryKey } from "@/lib/queryKeys";
 import { apiClient } from "@/lib/apiClient";
-import type { components } from "@/types/api";
 import type { TicketCreate, TicketUpdate } from "@/schemas/tickets";
-
-type TicketResponse = components["schemas"]["TicketResponse"];
+import { ticketSchema } from "@/schemas/api/ticket";
 
 export function useTicketCreate() {
   const queryClient = useQueryClient();
@@ -14,7 +12,7 @@ export function useTicketCreate() {
 
   const { mutate, isPending } = useMutation({
     mutationFn: async (data: TicketCreate) => {
-      return apiClient.post<TicketResponse>("/api/v1/tickets", data);
+      return apiClient.post("/api/v1/tickets", data, ticketSchema);
     },
     onSuccess: (ticket) => {
       toast.success("Ticket created");
@@ -34,7 +32,7 @@ export function useTicketUpdate(ticketId: string) {
 
   const { mutate, isPending } = useMutation({
     mutationFn: async (data: TicketUpdate) => {
-      return apiClient.put<TicketResponse>(`/api/v1/tickets/${ticketId}`, data);
+      return apiClient.put(`/api/v1/tickets/${ticketId}`, data, ticketSchema);
     },
     onSuccess: (ticket) => {
       toast.success("Ticket updated");
@@ -73,7 +71,7 @@ export function useTicketTransition(ticketId: string) {
 
   const { mutate, isPending } = useMutation({
     mutationFn: async (data: { status: string }) => {
-      return apiClient.put<TicketResponse>(`/api/v1/tickets/${ticketId}`, data);
+      return apiClient.put(`/api/v1/tickets/${ticketId}`, data, ticketSchema);
     },
     onSuccess: () => {
       toast.success("Status updated");
