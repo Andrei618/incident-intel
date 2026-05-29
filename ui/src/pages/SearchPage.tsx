@@ -4,15 +4,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/apiClient";
-import type { components } from "@/types/api";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import { Markdown } from "@/components/Markdown";
 import { queryKey } from "@/lib/queryKeys";
 import { RelevanceBadge } from "@/components/RelevanceBadge";
-
-type SearchResponse = components["schemas"]["SearchResponse"];
+import { searchResponseSchema } from "@/schemas/api/search";
 
 export default function SearchPage() {
   const [input, setInput] = useState("");
@@ -28,7 +26,7 @@ export default function SearchPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: queryKey.search.results(query, method),
-    queryFn: () => apiClient.get<SearchResponse>(url),
+    queryFn: () => apiClient.get(url, searchResponseSchema),
     enabled: query.trim().length > 0,
   });
 

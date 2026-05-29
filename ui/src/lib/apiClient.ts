@@ -1,17 +1,25 @@
 import { config } from "@/config";
+import { z } from "zod";
+import { ApiError, ValidationError } from "./errors";
 
-export class ApiError extends Error {
-  status: number;
-  body: unknown;
-  constructor(status: number, body: unknown, message: string) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.body = body;
-  }
+function isSchema(v: unknown): v is z.ZodType {
+  return typeof v === "object" && v !== null && "safeParse" in v;
 }
+export function request<T>(path: string, init?: RequestInit): Promise<T>;
 
-export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export function request<S extends z.ZodType>(
+  path: string,
+  schema: S,
+  init?: RequestInit
+): Promise<z.infer<S>>;
+
+export async function request(
+  path: string,
+  schemaOrInit?: z.ZodType | RequestInit,
+  maybeInit?: RequestInit
+): Promise<unknown> {
+  const schema = isSchema(schemaOrInit) ? schemaOrInit : undefined;
+  const init = isSchema(schemaOrInit) ? maybeInit : schemaOrInit;
   const res = await fetch(`${config.apiBaseUrl}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
@@ -21,16 +29,25 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, body, `${res.status} ${res.statusText}`);
   }
 
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) return undefined;
 
-  return res.json() as Promise<T>;
+  const body = await res.json();
+
+  if (schema) {
+    const result = schema.safeParse(body);
+    if (!result.success)
+      throw new ValidationError(path, result.error.issues, body);
+    return result.data;
+  }
+  return body;
 }
 
 export const apiClient = {
-  get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: "POST", body: JSON.stringify(body) }),
-  put: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: "PUT", body: JSON.stringify(body) }),
-  delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  get: <S extends z.ZodType>(path: string, schema: S) => request(path, schema),
+  post: <S extends z.ZodType>(path: string, body: unknown, schema: S) =>
+    request(path, schema, { method: "POST", body: JSON.stringify(body) }),
+  put: <S extends z.ZodType>(path: string, body: unknown, schema: S) =>
+    request(path, schema, { method: "PUT", body: JSON.stringify(body) }),
+  delete: (path: string) =>
+    request(path, { method: "DELETE" }),
 };
