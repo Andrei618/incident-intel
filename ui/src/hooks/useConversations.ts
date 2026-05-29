@@ -1,10 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/apiClient";
 import { queryKey } from "@/lib/queryKeys";
-import type { components } from "@/types/api";
-
-type ConversationListResponse =
-  components["schemas"]["ConversationListResponse"];
+import { conversationListSchema } from "@/schemas/api/conversation";
 
 export function useConversations() {
   const {
@@ -14,7 +11,7 @@ export function useConversations() {
   } = useQuery({
     queryKey: queryKey.conversations.all(),
     queryFn: () =>
-      apiClient.get<ConversationListResponse>("/api/v1/conversations"),
+      apiClient.get("/api/v1/conversations", conversationListSchema),
   });
   return { conversations, isLoading, error };
 }

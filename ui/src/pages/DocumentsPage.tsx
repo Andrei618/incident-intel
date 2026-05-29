@@ -16,9 +16,9 @@ import {
 import { DocumentCard } from "@/components/DocumentCard";
 import { queryKey } from "@/lib/queryKeys";
 import { PaginationControls } from "@/components/PaginationControls";
+import { documentListSchema } from "@/schemas/api/document";
 
 const LIMIT = 20;
-type DocumentListResponse = components["schemas"]["DocumentListResponse"];
 type DocType = components["schemas"]["DocType"];
 type DocTypeFilter = DocType | "all";
 
@@ -38,7 +38,7 @@ export default function DocumentsPage() {
     error,
   } = useQuery({
     queryKey: queryKey.documents.list({ docType, offset }),
-    queryFn: () => apiClient.get<DocumentListResponse>(url),
+    queryFn: () => apiClient.get(url, documentListSchema),
   });
 
   return (
