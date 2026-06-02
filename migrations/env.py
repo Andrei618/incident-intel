@@ -54,8 +54,9 @@ def get_url() -> str:
     """Retrieve database URL with driver conversion for Alembic compatibility.
 
     Priority order:
-    1. DATABASE_URL environment variable (production/CI)
-    2. sqlalchemy.url from alembic.ini (local development)
+    1. DATABASE_URL_DIRECT Alembic backend connection
+    2. DATABASE_URL environment variable (production/CI)
+    3. sqlalchemy.url from alembic.ini (local development)
 
     Driver conversion:
     - Converts postgresql+asyncpg:// to postgresql+psycopg://
@@ -67,7 +68,7 @@ def get_url() -> str:
     Raises:
         ValueError: If no database URL is configured
     """
-    url = os.getenv("DATABASE_URL")
+    url = os.getenv("DATABASE_URL_DIRECT") or os.getenv("DATABASE_URL")
     if url:
         # Convert async driver to sync for Alembic
         url = url.replace("+asyncpg", "+psycopg")
@@ -75,6 +76,8 @@ def get_url() -> str:
         # Handle legacy postgres:// prefix
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+psycopg://", 1)
+        elif url.startswith("postgresql://") and "+" not in url.split("://", 1)[0]:
+            url = url.replace("postgresql://", "postgresql+psycopg://", 1)
         return url
 
     # Fallback to alembic.ini configuration

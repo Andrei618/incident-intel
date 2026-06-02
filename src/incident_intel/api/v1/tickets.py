@@ -20,6 +20,7 @@ from incident_intel.schemas.ticket import (
 )
 from incident_intel.services.ticket_service import (
     create_ticket,
+    delete_ticket,
     get_ticket,
     list_tickets,
     update_ticket,
@@ -91,6 +92,24 @@ async def update_ticket_endpoint(
         raise HTTPException(status_code=404, detail=str(e)) from e
     except BusinessRuleViolationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.delete("/{ticket_id}", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ticket_endpoint(
+    ticket_id: UUID, session: AsyncSession = Depends(get_session)
+) -> None:
+    """Delete ticket by ID.
+
+    Raises:
+        HTTPException(404) if ticket not found.
+    """
+    try:
+        await delete_ticket(
+            ticket_id=ticket_id,
+            session=session,
+        )
+    except TicketNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("", response_model=TicketListResponse)

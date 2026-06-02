@@ -126,3 +126,8 @@ class Message(Base):
         back_populates="messages",
         lazy="joined",
     )
+    query_logs: Mapped[list["QueryLog"]] = relationship(
+        back_populates="message",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )

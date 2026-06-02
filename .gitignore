@@ -20,6 +20,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!ui/src/lib/
 lib64/
 parts/
 sdist/
@@ -69,3 +70,4 @@ Thumbs.db
 *.log
 *.code-workspace
 .internal/
+CLAUDE.md

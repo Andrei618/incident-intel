@@ -63,3 +63,16 @@ class BusinessRuleViolationError(DomainError):
         >>> except BusinessRuleViolationError as e: ... str(e)
         """
         super().__init__(message)
+
+
+class ConversationNotFoundError(DomainError):
+    """Exception raised when a conversation ID does not exist in the database."""
+
+    def __init__(self, conversation_id: UUID) -> None:
+        """Exception when conversation ID not found.
+
+        API layer can access conversation ID stored in this exception:
+        >>> except ConversationNotFoundError as e: ... e.conversation_id
+        """
+        self.conversation_id = conversation_id
+        super().__init__(f"Conversation {conversation_id} not found")

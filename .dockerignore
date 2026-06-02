@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets / local env
+.env
+.env.*
+
+# Frontend - not part of the backend image
+ui/node_modules/
+ui/dist/
+
+# VCS / project meta
+.git/
+.github/
+.internal/
