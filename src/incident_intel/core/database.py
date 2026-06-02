@@ -2,6 +2,7 @@
 
 import os
 from collections.abc import AsyncGenerator
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -10,21 +11,36 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-DATABASE_URL = os.getenv(
+raw = os.getenv(
     "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/incident_intel"
 )
+parts = urlsplit(raw)
+pairs = parse_qsl(parts.query, keep_blank_values=True)
+sslmode = dict(pairs).get("sslmode")
+query = [(k, v) for k, v in pairs if k != "sslmode"]
+raw = urlunsplit(parts._replace(query=urlencode(query)))
 
-# Convert Railway's postgres:// to postgresql+asyncpg:// for async support
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+if raw.startswith("postgres://"):
+    raw = raw.replace("postgres://", "postgresql+asyncpg://", 1)
+elif raw.startswith("postgresql://") and "+" not in raw.split("://", 1)[0]:
+    raw = raw.replace("postgresql://", "postgresql+asyncpg://", 1)
+DATABASE_URL = raw
 
 ECHO_SQL_VALUE = os.getenv("ECHO_SQL", "false").lower()
 ECHO_SQL = {"true": True, "debug": "debug"}.get(ECHO_SQL_VALUE, False)
 
+connect_args = {
+    "statement_cache_size": 0,
+    "prepared_statement_cache_size": 0,
+    "server_settings": {"application_name": "incident-intel-api"},
+}
+if sslmode:
+    connect_args["ssl"] = sslmode
 engine = create_async_engine(
     DATABASE_URL,
     pool_pre_ping=True,  # Verify connections before use; prevents stale connection errors
     echo=ECHO_SQL,  # Controlled by ECHO_SQL env var; logs all SQL when enabled
+    connect_args=connect_args,
 )
 
 # Async session factory for FastAPI routes
