@@ -17,7 +17,7 @@ raw = os.getenv(
 parts = urlsplit(raw)
 pairs = parse_qsl(parts.query, keep_blank_values=True)
 sslmode = dict(pairs).get("sslmode")
-query = [(k, v) for k, v in pairs if k != "sslmode"]
+query = [(k, v) for k, v in pairs if k not in ("sslmode", "channel_binding")]
 raw = urlunsplit(parts._replace(query=urlencode(query)))
 
 if raw.startswith("postgres://"):
