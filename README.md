@@ -1,242 +1,258 @@
 # Incident Intelligence Assistant
 
-> AI-powered assistant for IT operations teams that intelligently queries both structured incident data and unstructured documentation using RAG (Retrieval-Augmented Generation).
+> Assistant for IT operations teams. Answers questions over structured incident data (tickets, services) and unstructured documentation (runbooks, guides, policies, FAQs) using retrieval-augmented generation (RAG).
 
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.125+-green.svg)](https://fastapi.tiangolo.com)
-[![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-blue.svg)](https://www.postgresql.org/)
+[![PostgreSQL 18](https://img.shields.io/badge/PostgreSQL-18-blue.svg)](https://www.postgresql.org/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
----
-
-## 🚧 Status
-
-**Current Phase:** Active Development
-
-This project demonstrates a production-ready FastAPI application with modern Python tooling and AI/RAG capabilities.
-
-**Implemented:**
-- RESTful CRUD APIs with FastAPI
-- Async SQLAlchemy with PostgreSQL + pgvector
-- Structured logging with request correlation
-- Comprehensive test coverage
-- Code quality automation (ruff, mypy, pre-commit)
+**Live demo:** [app](https://incident-intel-rho.vercel.app) · [API health](https://incident-intel-api-production.up.railway.app/health) · [API docs](https://incident-intel-api-production.up.railway.app/docs)
 
 ---
 
-## 🎯 Project Overview
+## Status
 
-This assistant helps IT operations teams by:
-- **Answering questions** about past incidents using semantic search
-- **Retrieving relevant documentation** from runbooks and wikis
-- **Combining structured data** (tickets, incidents) with unstructured data (docs, logs)
-- **Providing context-aware responses** using LangChain and LangGraph
+**Deployed** — live public full-stack demo on Vercel (frontend) + Railway (backend + Redis) + Neon (Postgres + pgvector). See [Deployment](#deployment).
+
+A portfolio project covering API design, async database access with vector search, a React SPA, and a from-scratch deployment. Points worth a look:
+
+- **Hybrid retrieval, built from scratch** — PostgreSQL full-text search (`ts_rank`) and pgvector cosine similarity, fused with Reciprocal Rank Fusion ([`search_service.py`](src/incident_intel/services/search_service.py)).
+- **Streaming chat** over Server-Sent Events through a managed platform proxy.
+- **Neon pooler + asyncpg interop** — the connection details documented under [Deployment](#deployment).
+
+Implemented:
+
+- REST APIs (tickets, documents, services, search, chat, conversations) with FastAPI
+- Async SQLAlchemy with PostgreSQL + pgvector; Alembic migrations
+- Redis caching; structured logging with request correlation
+- Tests: 190 backend (pytest) · 32 frontend (Vitest)
+- ruff, mypy (`--strict` on `src/`), pre-commit hooks
+
+---
+
+## Project Overview
+
+What it does:
+
+- Vector (semantic) search and PostgreSQL full-text search over documentation, fused with Reciprocal Rank Fusion
+- Retrieval across runbooks, guides, policies, and FAQs
+- Ticket questions answered with filtered SQL queries (list / count / by service)
+- Chat answers generated from retrieved context; the prompt instructs the model to cite numbered sources, and the API returns the source metadata alongside the answer
+
+### API
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /health` | Liveness + database/Redis status |
+| `/api/v1/tickets` | Ticket CRUD + lifecycle transitions |
+| `/api/v1/documents` | Document CRUD (chunked and embedded on write) |
+| `/api/v1/services` | Service listing |
+| `/api/v1/search` | Keyword / vector / hybrid search |
+| `/api/v1/chat` | RAG chat (SSE streaming) |
+| `/api/v1/conversations` | Conversation history (list / get / delete) |
+
+Interactive docs at [`/docs`](https://incident-intel-api-production.up.railway.app/docs).
 
 ### Tech Stack
 
 | Category | Technology |
 |----------|-----------|
-| **Language** | Python 3.13+ |
-| **Web Framework** | FastAPI 0.125+ |
-| **Database** | PostgreSQL 17 with pgvector |
-| **Cache** | Redis 7.4 |
-| **AI/LLM** | LangChain, LangGraph, OpenAI |
-| **Package Manager** | uv |
-| **Logging** | structlog (structured JSON logging with request correlation) |
-| **Code Quality** | Ruff, mypy, pytest |
+| Language | Python 3.13 |
+| Backend | FastAPI, async SQLAlchemy, Alembic, Pydantic |
+| Frontend | Vite, React, TypeScript, Tailwind, shadcn/ui, TanStack Query, React Router, Zod |
+| Database | PostgreSQL 18 with pgvector |
+| Cache | Redis 7.4 |
+| AI / RAG | OpenAI SDK (embeddings + chat); PostgreSQL full-text search (`ts_rank`) + pgvector cosine + Reciprocal Rank Fusion |
+| Tooling | uv, ruff, mypy, pytest, structlog; Vitest + MSW (frontend) |
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
 - Python 3.13+
 - Docker and Docker Compose
-- uv package manager ([installation guide](https://github.com/astral-sh/uv))
-- OpenAI API key
+- Node.js 20+ (for the frontend)
+- uv ([installation guide](https://github.com/astral-sh/uv))
+- An OpenAI API key
 
-### Installation
+### Backend
 
-1. **Clone the repository:**
+1. **Clone:**
    ```bash
    git clone https://github.com/Andrei618/incident-intel.git
    cd incident-intel
    ```
-
-2. **Set up environment variables:**
+2. **Environment:**
    ```bash
    cp .env.example .env
-   # Edit .env and add your OPENAI_API_KEY
+   # set OPENAI_API_KEY in .env
    ```
-
-3. **Start infrastructure:**
+3. **Infrastructure (Postgres + Redis):**
    ```bash
    docker compose up -d
    ```
-
-4. **Install dependencies:**
+4. **Dependencies:**
    ```bash
    uv sync
    ```
-
-5. **Verify setup:**
+5. **Migrate the database:**
    ```bash
-   # Check PostgreSQL
-   docker exec -it incident-intel-db psql -U postgres -d incident_intel -c "SELECT version();"
-   
-   # Check Redis
-   docker exec -it incident-intel-redis redis-cli ping
+   uv run alembic upgrade head
    ```
-
-6. **Install pre-commit hooks:**
+6. **(Optional) seed demo data** — services, tickets, and documents. Calls OpenAI to generate embeddings, and is **not idempotent** (run once on an empty database):
    ```bash
-   uv run pre-commit install
+   uv run python scripts/seed_scenarios.py
    ```
+7. **Run the API:**
+   ```bash
+   uv run uvicorn incident_intel.main:app --reload --port 8000
+   ```
+   Open http://localhost:8000/docs
 
----
-
-## 🏗️ Project Structure
-
-```
-incident-intel/
-├── src/
-│   └── incident_intel/      # Main application code
-│       ├── api/              # FastAPI routes and endpoints
-│       ├── core/             # Core business logic
-│       ├── db/               # Database models and migrations
-│       └── services/         # LLM and external service integrations
-├── tests/                    # Test suite
-│   ├── unit/                 # Unit tests
-│   ├── integration/          # Integration tests
-│   └── evals/                # LLM evaluation tests
-├── docker-compose.yml        # Local development infrastructure
-├── pyproject.toml            # Project dependencies and configuration
-└── README.md                 # This file
-```
-
----
-
-## 🛠️ Development
-
-### Running the Application
+### Frontend
 
 ```bash
-# Start all services
-docker compose up -d
-
-# Run the FastAPI server (when implemented)
-uv run uvicorn incident_intel.main:app --reload --host 0.0.0.0 --port 8000
+cd ui
+cp .env.example .env          # set VITE_API_BASE_URL=http://localhost:8000
+npm install
+npm run dev                   # http://localhost:5173
 ```
 
-### Code Quality
+### Pre-commit hooks (optional)
 
 ```bash
-# Lint code
-uv run ruff check .
-
-# Format code
-uv run ruff format .
-
-# Type checking
-uv run mypy src/
-
-# Run tests
-uv run pytest
-```
-
-### Pre-commit Hooks
-
-This project uses [pre-commit](https://pre-commit.com/) to automatically check code quality before commits.
-
-**Setup (one-time):**
-```bash
-# Install pre-commit hooks
 uv run pre-commit install
 ```
 
-**Usage:**
-```bash
-# Hooks run automatically on git commit
-git commit -m "your message"
+---
 
-# Run manually on all files
-uv run pre-commit run --all-files
+## Project Structure
 
-# Run manually on staged files only
-uv run pre-commit run
 ```
-
-**What gets checked:**
-- ✅ Ruff linting (with auto-fix)
-- ✅ Ruff formatting
-- ✅ Mypy type checking (strict mode)
-
-**Note:** If hooks fail, the commit is blocked. Fix the issues and try again.
-
-### Database Management
-
-```bash
-# Run migrations (when implemented)
-uv run alembic upgrade head
-
-# Create a new migration
-uv run alembic revision --autogenerate -m "description"
+incident-intel/
+├── src/incident_intel/       # FastAPI backend
+│   ├── api/                  # Routes (health + /api/v1/*)
+│   ├── core/                 # DB engine, Redis, logging
+│   ├── llm/                  # OpenAI provider abstraction
+│   ├── middleware/           # Request-ID correlation
+│   ├── models/               # SQLAlchemy ORM models
+│   ├── schemas/              # Pydantic request/response models
+│   └── services/             # Search, chat, embeddings, tickets, ...
+├── ui/                       # Vite + React + TypeScript SPA
+├── migrations/               # Alembic migrations
+├── scripts/                  # Seeding / dev utilities
+├── tests/                    # pytest (unit + integration)
+├── Dockerfile                # Backend image (multi-stage)
+├── railway.json              # Railway deploy config
+├── docker-compose.yml        # Local Postgres (pgvector) + Redis
+└── pyproject.toml
 ```
 
 ---
 
-## 🧪 Testing
+## Development
+
+### Run
 
 ```bash
-# Run all tests
-uv run pytest
-
-# Run with coverage
-uv run pytest --cov=src/ --cov-report=html
-
-# Run specific test file
-uv run pytest tests/unit/test_example.py
+docker compose up -d
+uv run uvicorn incident_intel.main:app --reload --port 8000
 ```
-### Test Database
 
-Tests use a separate PostgreSQL database to avoid affecting development data.
+### Code quality
 
-**Default:** `postgresql+asyncpg://postgres:postgres@localhost:5432/incident_intel_test`
-
-This database is automatically created/destroyed by the test suite. No manual setup required if you're using the default Docker Compose configuration.
-
-To use a different test database, set `TEST_DATABASE_URL` in your `.env.local` (not committed):
 ```bash
-TEST_DATABASE_URL=postgresql+asyncpg://user:pass@host:port/testdb
----
+uv run ruff check .      # lint
+uv run ruff format .     # format
+uv run mypy src/         # type-check (strict; src/ only — test-file types tracked separately)
+uv run pytest            # tests (coverage runs by default via pyproject addopts)
+```
 
-## 🚀 Deployment
+### Database
 
-Deployment to Railway (coming soon):
-- PostgreSQL with pgvector extension
-- Redis for caching
-- FastAPI application
-- Environment-based configuration
-
----
-
-## 📝 License
-
-MIT License - see LICENSE file for details
+```bash
+uv run alembic upgrade head                               # apply migrations
+uv run alembic revision --autogenerate -m "description"   # create a migration
+```
 
 ---
 
-## 🤝 Contributing
+## Testing
 
-This is a portfolio project and not currently accepting contributions. However, feel free to fork and adapt for your own use!
+```bash
+uv run pytest                                                # all backend tests (coverage on by default)
+uv run pytest tests/unit/services/test_search_service.py    # a single file
+```
+
+Frontend:
+
+```bash
+cd ui && npm test
+```
+
+### Test database
+
+The suite creates and drops **tables** inside a separate database, `incident_intel_test`, but does not create that database itself. Create it once:
+
+```bash
+docker exec -it incident-intel-db createdb -U postgres incident_intel_test
+```
+
+Override the target with `TEST_DATABASE_URL` (default `postgresql+asyncpg://postgres:postgres@localhost:5432/incident_intel_test`).
 
 ---
 
-## 📧 Contact
+## Deployment
 
-**Andrei** - [GitHub Profile](https://github.com/Andrei618)
+**Live:**
+- **App (frontend):** https://incident-intel-rho.vercel.app
+- **API (backend):** https://incident-intel-api-production.up.railway.app — [`/health`](https://incident-intel-api-production.up.railway.app/health) · [`/docs`](https://incident-intel-api-production.up.railway.app/docs)
+
+### Architecture
+
+```
+Browser ──▶ Vercel (Vite/React SPA) ──▶ Railway (FastAPI + Redis) ──▶ Neon (PostgreSQL 18 + pgvector)
+                                                │
+                                                └──▶ OpenAI (embeddings + chat)
+```
+
+| Layer | Platform | Notes |
+|-------|----------|-------|
+| Frontend | **Vercel** | Vite/React SPA served as static assets; SPA rewrite so client-side routes don't 404 on reload |
+| Backend + Cache | **Railway** (Amsterdam) | FastAPI built from a multi-stage `Dockerfile` + Redis; a long-lived ASGI process for SSE chat streaming |
+| Database | **Neon** (Frankfurt) | PostgreSQL 18 + pgvector; **pooled** connection for the app, **direct** connection for migrations |
+
+### How a deploy happens
+
+Both platforms use **native GitHub integration** — no deploy scripts, no CI deploy jobs. `main` is production:
+
+1. Work lands on feature branches → `develop` (integration); CI (lint / type / test) runs on every PR.
+2. A deliberate **`develop → main`** PR is the promotion gate to production.
+3. On push to `main`:
+   - **Railway** rebuilds the backend from the `Dockerfile`, runs `alembic upgrade head` as a pre-deploy step (migrations apply *before* the new instance serves traffic; a failed migration leaves the previous instance running), then health-checks `/health`.
+   - **Vercel** rebuilds and deploys the SPA. Each PR also gets a free preview URL.
+
+### Neon + asyncpg connection details
+
+The bits that make a pooled, serverless Postgres work with an async driver:
+
+- The app uses Neon's **pooled** endpoint via **asyncpg** with `statement_cache_size=0` — Neon's pooler is transaction-mode (PgBouncer), so server-side prepared statements don't survive across requests.
+- `sslmode` and `channel_binding` are **stripped from the URL** before asyncpg sees them (libpq-only parameters asyncpg rejects); TLS is still enforced via `connect_args={"ssl": "require"}`.
+- **Alembic** uses a separate **direct** (non-pooled) URL via the sync **psycopg** driver — advisory locks and cross-transaction DDL don't survive a transaction pooler.
+
+Configuration is environment-based. Backend variables: [`.env.example`](.env.example). Frontend variables: [`ui/.env.example`](ui/.env.example) (`VITE_API_BASE_URL`). No secrets are committed; production values live in the Railway and Vercel dashboards.
 
 ---
 
-**Note:** This project is part of a portfolio demonstrating full-stack AI application development with modern Python tools and best practices.
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+---
+
+## Contact
+
+**Andrei** — [GitHub](https://github.com/Andrei618)
