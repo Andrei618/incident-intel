@@ -20,6 +20,7 @@ from incident_intel.schemas.classification import (
     TicketStatus,
 )
 from incident_intel.services.chat_service import (
+    _build_messages,
     count_tokens,
     get_history_window,
     handle_chat,
@@ -418,3 +419,37 @@ async def test_handle_chat_stream_yields_tokens_and_done(
     assert "message_id" in parsed[2]
 
     test_session.commit.assert_called_once()
+
+
+def test_build_messages_citation_when_sources_exist() -> None:
+    """Test _build_messages makes messages with citation, when sources exist."""
+    # Arrange
+    test_context = "test context"
+    test_message = "test message"
+    test_history = []
+    test_sources = [{"id": "source link"}]
+
+    # Act
+    result = _build_messages(
+        context=test_context, message=test_message, history=test_history, sources=test_sources
+    )
+
+    # Assert
+    assert "Cite sources by number" in result[0].content
+
+
+def test_build_messages_no_citation_when_sources_empty() -> None:
+    """Test _build_messages makes messages without citation, when sources are empty."""
+    # Arrange
+    test_context = "test context"
+    test_message = "test message"
+    test_history = []
+    test_sources = []
+
+    # Act
+    result = _build_messages(
+        context=test_context, message=test_message, history=test_history, sources=test_sources
+    )
+
+    # Assert
+    assert "Cite sources by number" not in result[0].content
