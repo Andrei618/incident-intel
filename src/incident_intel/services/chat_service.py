@@ -44,13 +44,20 @@ def get_history_window(messages: Sequence[Message], budget: int) -> list[Message
     return list(reversed(result))
 
 
-def _build_messages(context: str, message: str, history: list[Message]) -> list[ChatMessage]:
-    """Build list of messages for chat from user message and context."""
+def _build_messages(
+    context: str, message: str, history: list[Message], sources: list[dict[str, Any]]
+) -> list[ChatMessage]:
+    """Build list of messages for chat from user message, sources (if provided) and context."""
+    if sources:
+        source_citation_instruction = "Cite sources by number (e.g., [1], [2]). Do not make up citations not present in the provided context."
+    else:
+        source_citation_instruction = ""
+
     system_message_content = f"""\
 You are an IT operations assistant. Answer the user's question using ONLY
-the context provided below. Cite sources by number (e.g., [1], [2]).
+the context provided below. {source_citation_instruction}
 If the context does not contain enough information, say so clearly.
-Do not make up information or citations not present in the provided context.
+Do not make up information not present in the provided context.
 
 Context:
 {context}
@@ -183,7 +190,9 @@ async def handle_chat(
         if result.route == "clarify":
             answer = result.context
         else:
-            messages = _build_messages(result.context, message=message, history=history)
+            messages = _build_messages(
+                result.context, message=message, history=history, sources=result.sources
+            )
             answer = await active_provider.generate(messages=messages)
         t_generate = time.perf_counter()
         logger.info("timing_generate", duration_ms=int((t_generate - t_dispatch) * 1000))
@@ -294,7 +303,9 @@ async def handle_chat_stream(
             answer = result.context
             yield f"data: {json.dumps({'type': 'token', 'content': answer})}\n\n"
         else:
-            messages = _build_messages(result.context, message=message, history=history)
+            messages = _build_messages(
+                result.context, message=message, history=history, sources=result.sources
+            )
             tokens: list[str] = []
             first_token_logged = False
             async for token in active_provider.generate_stream(messages=messages):
