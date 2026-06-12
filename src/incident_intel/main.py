@@ -29,8 +29,8 @@ app: FastAPI = FastAPI(
     title="Incident Intelligence Assistant",
     version="0.1.0",
     description=(
-        "AI-powered assistant for IT operations teams that intelligently queries "
-        "both structured incident data and unstructured documentation using RAG"
+        "Assistant for IT operations teams answering questions over structured incident data"
+        " and documentation using retrieval-augmented generation (RAG)."
     ),
 )
 
