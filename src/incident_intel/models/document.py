@@ -101,7 +101,7 @@ class DocumentChunk(Base):
     """Chunk of document for embedding and full-text search.
 
     Vector similarity index (HNSW for fast approximate search).
-    Full-text search index for BM25 keyword matching.
+    Full-text search index (PostgreSQL tsvector / ts_rank).
     """
 
     __tablename__ = "document_chunks"
