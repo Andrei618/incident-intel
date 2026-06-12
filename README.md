@@ -9,6 +9,8 @@
 
 **Live demo:** [app](https://incident-intel-rho.vercel.app) · [API health](https://incident-intel-api-production.up.railway.app/health) · [API docs](https://incident-intel-api-production.up.railway.app/docs)
 
+![Chat answer grounded in retrieved runbooks, with cited sources and conversation history](docs/assets/vpn_error.png)
+
 ---
 
 ## Status
@@ -28,6 +30,18 @@ Implemented:
 - Redis caching; structured logging with request correlation
 - Tests: 190 backend (pytest) · 32 frontend (Vitest)
 - ruff, mypy (`--strict` on `src/`), pre-commit hooks
+
+---
+
+## Screenshots
+
+**Hybrid search** — keyword + vector fused with RRF, with per-result relevance bands:
+
+![Search page showing keyword/vector/hybrid toggle and Strong/Medium relevance badges](docs/assets/search_vpn.png)
+
+**Structured-data routing** — ticket questions are classified to a SQL path, not RAG:
+
+![Chat answering "how many open tickets are there" from a SQL query, with no sources](docs/assets/open_tickets_number.png)
 
 ---
 
