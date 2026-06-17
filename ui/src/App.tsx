@@ -4,6 +4,7 @@ import {
   RouterProvider,
   Navigate,
 } from "react-router-dom";
+import { Analytics } from "@vercel/analytics/react";
 import { RootErrorBoundary } from "@/components/ErrorBoundary";
 import { AppLayout } from "@/components/AppLayout";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
@@ -50,5 +51,10 @@ const router = createBrowserRouter([
 ]);
 
 export default function App() {
-  return <RouterProvider router={router} />;
+  return (
+    <>
+      <RouterProvider router={router} />
+      <Analytics />
+    </>
+  );
 }
