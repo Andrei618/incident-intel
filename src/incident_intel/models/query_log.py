@@ -98,4 +98,5 @@ class QueryLog(Base):
         back_populates="query_log",
         lazy="selectin",
         cascade="all, delete-orphan",
+        order_by="QuerySource.rank",
     )
