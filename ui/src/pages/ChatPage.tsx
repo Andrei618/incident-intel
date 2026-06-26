@@ -88,13 +88,14 @@ export default function ChatPage() {
       <ConversationSidebar
         activeId={conversationId}
         onSelect={(id) => {
+          if (id === conversationId) return;
           setMessages([]);
           setSearchParams({ conversation_id: id });
         }}
         onNewChat={handleNewChat}
       />
       <div
-        className={`flex flex-col flex-1 min-h-0 ${CONTENT_MAX_WIDTH} mx-auto w-full`}
+        className={`flex flex-col flex-1 min-h-0 ${CONTENT_MAX_WIDTH} px-4 mx-auto w-full`}
       >
         <div className="flex-1 min-h-0 overflow-y-auto py-4 space-y-4">
           {messages.length === 0 && (
@@ -122,12 +123,12 @@ export default function ChatPage() {
               key={index}
             >
               {msg.role === "user" && (
-                <div className="bg-primary text-primary-foreground rounded-2xl px-4 py-2 max-w-[80%]">
+                <div className="bg-primary text-primary-foreground rounded-lg px-4 py-2 max-w-[80%]">
                   {msg.content}
                 </div>
               )}
               {msg.role === "assistant" && msg.content && (
-                <div className="bg-muted rounded-2xl px-4 py-2">
+                <div className="bg-muted rounded-lg px-4 py-2">
                   <Markdown>{msg.content}</Markdown>
                 </div>
               )}
@@ -136,17 +137,22 @@ export default function ChatPage() {
                   <p className="text-xs font-medium text-muted-foreground">
                     Sources
                   </p>
-                  {msg.sources.map((s) => (
+                  {msg.sources.map((s, i) => (
                     <div
                       key={s.chunk_id}
-                      className="flex items-center justify-between rounded bg-muted px-3 py-1.5 text-sm"
+                      className="flex items-center justify-between rounded-md bg-muted px-3 py-1.5 text-sm"
                     >
-                      <Link
-                        to={`/documents/${s.document_id}`}
-                        className="hover:underline"
-                      >
-                        {s.document_title}
-                      </Link>
+                      <div className="flex items-center gap-1.5 flex-1">
+                        <span className="shrink-0 text-muted-foreground">
+                          [{i + 1}]
+                        </span>
+                        <Link
+                          to={`/documents/${s.document_id}`}
+                          className="hover:underline"
+                        >
+                          {s.document_title}
+                        </Link>
+                      </div>
                       <span className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0">
                         Relevance:
                         <RelevanceBadge
