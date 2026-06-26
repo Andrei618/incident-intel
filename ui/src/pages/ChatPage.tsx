@@ -136,17 +136,22 @@ export default function ChatPage() {
                   <p className="text-xs font-medium text-muted-foreground">
                     Sources
                   </p>
-                  {msg.sources.map((s) => (
+                  {msg.sources.map((s, i) => (
                     <div
                       key={s.chunk_id}
                       className="flex items-center justify-between rounded bg-muted px-3 py-1.5 text-sm"
                     >
-                      <Link
-                        to={`/documents/${s.document_id}`}
-                        className="hover:underline"
-                      >
-                        {s.document_title}
-                      </Link>
+                      <div className="flex items-center gap-1.5 flex-1">
+                        <span className="shrink-0 text-muted-foreground">
+                          [{i + 1}]
+                        </span>
+                        <Link
+                          to={`/documents/${s.document_id}`}
+                          className="hover:underline"
+                        >
+                          {s.document_title}
+                        </Link>
+                      </div>
                       <span className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0">
                         Relevance:
                         <RelevanceBadge
