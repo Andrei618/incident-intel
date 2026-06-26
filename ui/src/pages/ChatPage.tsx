@@ -88,6 +88,7 @@ export default function ChatPage() {
       <ConversationSidebar
         activeId={conversationId}
         onSelect={(id) => {
+          if (id === conversationId) return;
           setMessages([]);
           setSearchParams({ conversation_id: id });
         }}
