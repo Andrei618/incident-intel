@@ -3,6 +3,7 @@
 import json
 import time
 from collections.abc import AsyncIterator, Sequence
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -45,7 +46,7 @@ def get_history_window(messages: Sequence[Message], budget: int) -> list[Message
 
 
 def _build_messages(
-    context: str, message: str, history: list[Message], sources: list[dict[str, Any]]
+    context: str, message: str, history: list[Message], sources: list[dict[str, Any]], route: str
 ) -> list[ChatMessage]:
     """Build list of messages for chat from user message, sources (if provided) and context."""
     if sources:
@@ -53,10 +54,20 @@ def _build_messages(
     else:
         source_citation_instruction = ""
 
+    if route == "sql":
+        route_instruction = f"""
+Today's date is {datetime.now(UTC).strftime("%Y-%m-%d")}.
+The context is the authoritative result of a database query—report it directly as the answer,
+even if the number is 0.
+"""
+    else:
+        route_instruction = "If the context does not contain enough information, say so clearly."
+
     system_message_content = f"""\
 You are an IT operations assistant. Answer the user's question using ONLY
-the context provided below. {source_citation_instruction}
-If the context does not contain enough information, say so clearly.
+the context provided below.
+{source_citation_instruction}
+{route_instruction}
 Do not make up information not present in the provided context.
 
 Context:
@@ -185,13 +196,21 @@ async def handle_chat(
             sources_count=len(result.sources),
             confidence=intent.confidence,
         )
+        logger.debug(
+            "chat_context",
+            context=result.context,
+        )
 
         # Clarify short-circuit OR build prompt + call LLM
         if result.route == "clarify":
             answer = result.context
         else:
             messages = _build_messages(
-                result.context, message=message, history=history, sources=result.sources
+                result.context,
+                message=message,
+                history=history,
+                sources=result.sources,
+                route=result.route,
             )
             answer = await active_provider.generate(messages=messages)
         t_generate = time.perf_counter()
@@ -304,7 +323,11 @@ async def handle_chat_stream(
             yield f"data: {json.dumps({'type': 'token', 'content': answer})}\n\n"
         else:
             messages = _build_messages(
-                result.context, message=message, history=history, sources=result.sources
+                result.context,
+                message=message,
+                history=history,
+                sources=result.sources,
+                route=result.route,
             )
             tokens: list[str] = []
             first_token_logged = False
