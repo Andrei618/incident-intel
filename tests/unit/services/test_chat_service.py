@@ -428,10 +428,15 @@ def test_build_messages_citation_when_sources_exist() -> None:
     test_message = "test message"
     test_history = []
     test_sources = [{"id": "source link"}]
+    test_route = "hybrid"
 
     # Act
     result = _build_messages(
-        context=test_context, message=test_message, history=test_history, sources=test_sources
+        context=test_context,
+        message=test_message,
+        history=test_history,
+        sources=test_sources,
+        route=test_route,
     )
 
     # Assert
@@ -445,11 +450,63 @@ def test_build_messages_no_citation_when_sources_empty() -> None:
     test_message = "test message"
     test_history = []
     test_sources = []
+    test_route = "hybrid"
 
     # Act
     result = _build_messages(
-        context=test_context, message=test_message, history=test_history, sources=test_sources
+        context=test_context,
+        message=test_message,
+        history=test_history,
+        sources=test_sources,
+        route=test_route,
     )
 
     # Assert
     assert "Cite sources by number" not in result[0].content
+
+
+def test_build_messages_sql_route_contains_database_instruction() -> None:
+    """Test _build_message makes message with instruction for database query, when route is sql."""
+    # Arrange
+    test_context = "test context"
+    test_message = "test message"
+    test_history = []
+    test_sources = []
+    test_route = "sql"
+
+    # Act
+    result = _build_messages(
+        context=test_context,
+        message=test_message,
+        history=test_history,
+        sources=test_sources,
+        route=test_route,
+    )
+
+    # Assert
+    assert "authoritative result of a database query" in result[0].content
+    assert "Today's date is" in result[0].content
+    assert "If the context does not contain enough information" not in result[0].content
+
+
+def test_build_messages_hybrid_route_does_not_contain_database_instruction() -> None:
+    """Test _build_message makes message without instruction for database query, when route is hybrid."""
+    # Arrange
+    test_context = "test context"
+    test_message = "test message"
+    test_history = []
+    test_sources = []
+    test_route = "hybrid"
+
+    # Act
+    result = _build_messages(
+        context=test_context,
+        message=test_message,
+        history=test_history,
+        sources=test_sources,
+        route=test_route,
+    )
+
+    # Assert
+    assert "If the context does not contain enough information" in result[0].content
+    assert "authoritative result of a database query" not in result[0].content

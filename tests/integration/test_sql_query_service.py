@@ -66,7 +66,7 @@ async def test_list_returns_correct_tickets(
     result = await query_tickets(session=test_session, intent=test_intent)
 
     # Assert
-    assert "Found 2 tickets" in result
+    assert "There are 2 tickets" in result
     assert "[p1]" in result
     assert "[p2]" not in result
 

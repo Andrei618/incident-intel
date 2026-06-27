@@ -140,7 +140,7 @@ async def test_query_tickets_list_with_multiple_filters() -> None:
 
     # Assert
     assert "p1" in result
-    assert "Found 1 tickets" in result
+    assert "There is 1 ticket" in result
     assert "test_title" in result
     assert "test-service_name" in result
 
