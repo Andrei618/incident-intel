@@ -94,6 +94,14 @@ async def query_tickets(session: AsyncSession, intent: SQLIntent) -> str:
         return _format_list_result(rows=result)
 
 
+def _count_phrase(count: int, noun: str) -> str:
+    """Build phrase for results from count and noun."""
+    if count == 1:
+        return f"There is 1 {noun}"
+    else:
+        return f"There are {count} {noun}s"
+
+
 def _format_count_result(count: int, filters: TicketFilters) -> str:
     """Build description for COUNT template from non-None filters."""
     description = []
@@ -110,9 +118,9 @@ def _format_count_result(count: int, filters: TicketFilters) -> str:
         description.append(f"until {filters.until}")
 
     if not description:
-        return f"There are {count} tickets in total."
+        return _count_phrase(count, "ticket") + "."
     else:
-        return f"There are {count} tickets with {', '.join(description)}."
+        return f"{_count_phrase(count, 'ticket')} with {', '.join(description)}."
 
 
 def _format_list_result(rows: Sequence[RowMapping]) -> str:
@@ -126,4 +134,4 @@ def _format_list_result(rows: Sequence[RowMapping]) -> str:
             f"{i}. [{row['priority']}] {row['title']} - {row['service_name']} ({row['status']}, {row['created_at']})"
         )
     ticket_list = "\n".join(list_results)
-    return f"Found {len(rows)} tickets:\n{ticket_list}"
+    return f"{_count_phrase(len(rows), 'ticket')}:\n{ticket_list}"

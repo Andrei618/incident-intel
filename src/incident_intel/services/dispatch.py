@@ -21,6 +21,9 @@ async def _sql_handler(
 ) -> DispatchResult:
     """Call ticket table."""
     if intent.sql_intent is None:
+        logger.warning(
+            "sql_route_missing_intent", original_query=original_query, action="FALLBACK_TO_HYBRID"
+        )
         return await _hybrid_handler(
             session=session,
             intent=intent,
