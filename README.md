@@ -45,6 +45,31 @@ Implemented:
 
 ---
 
+## Try the live demo
+
+The [live demo](https://incident-intel-rho.vercel.app) is pre-seeded with ~50 tickets spread across the last three months — a mix of priorities, statuses, and services — plus a set of paired runbooks. Questions are routed automatically to one of two paths:
+
+**Ticket data** — classified to a filtered SQL query and answered directly (no retrieval):
+
+- *How many open tickets are there?*
+- *How many resolved tickets?*
+- *How many P3 tickets?*
+- *How many tickets for payment-service?*
+- *How many resolved P2 tickets?* (several filters at once)
+- *How many tickets were opened last month?*
+
+**Documentation** — hybrid keyword + vector retrieval over runbooks, guides, policies, and FAQs, answered with cited sources:
+
+- *How do I fix database connection pool exhaustion?*
+- *The VPN certificate expired — what's the runbook?*
+- *Why are auth-service pods getting OOMKilled?*
+- *What are the API rate-limit tiers?*
+- *How do I rotate a TLS certificate?*
+
+Running locally? The same dataset comes from the [seed script](#backend).
+
+---
+
 ## Project Overview
 
 What it does:
@@ -116,8 +141,12 @@ Interactive docs at [`/docs`](https://incident-intel-api-production.up.railway.a
    ```bash
    uv run alembic upgrade head
    ```
-6. **(Optional) seed demo data** — services, tickets, and documents. Calls OpenAI to generate embeddings, and is **not idempotent** (run once on an empty database):
+6. **(Optional) seed demo data** — ~50 tickets spread across three months plus paired runbooks. The seeder wipes and rebuilds atomically, then prints a verification report. Two modes:
    ```bash
+   # Full seed — services, tickets, AND documents (calls OpenAI for embeddings). Use on a fresh database:
+   uv run python scripts/seed_scenarios.py --full
+
+   # Tickets-only refresh — rebuilds the 50 tickets with fresh dates; no OpenAI calls, runs in seconds. Safe to re-run:
    uv run python scripts/seed_scenarios.py
    ```
 7. **Run the API:**
