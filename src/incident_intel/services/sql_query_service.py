@@ -113,9 +113,9 @@ def _format_count_result(count: int, filters: TicketFilters) -> str:
     if filters.service_name is not None:
         description.append(f"service: {filters.service_name}")
     if filters.since is not None:
-        description.append(f"since {filters.since}")
+        description.append(f"since {filters.since.strftime('%Y-%m-%d')}")
     if filters.until is not None:
-        description.append(f"until {filters.until}")
+        description.append(f"until {filters.until.strftime('%Y-%m-%d')}")
 
     if not description:
         return _count_phrase(count, "ticket") + "."
@@ -131,7 +131,7 @@ def _format_list_result(rows: Sequence[RowMapping]) -> str:
     list_results = []
     for i, row in enumerate(rows, 1):
         list_results.append(
-            f"{i}. [{row['priority']}] {row['title']} - {row['service_name']} ({row['status']}, {row['created_at']})"
+            f"{i}. [{row['priority']}] {row['title']} - {row['service_name']} ({row['status']}, {row['created_at'].strftime('%Y-%m-%d')})"
         )
     ticket_list = "\n".join(list_results)
     return f"{_count_phrase(len(rows), 'ticket')}:\n{ticket_list}"
