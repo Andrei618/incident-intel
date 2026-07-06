@@ -7,19 +7,258 @@ For each of 5 scenarios, creates:
 Provides semantically coherent data for keyword, vector, hybrid search.
 """
 
+import argparse
 import asyncio
+from collections import Counter
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from incident_intel.core.database import Session
 from incident_intel.main import app
+from incident_intel.models.document import Document
 from incident_intel.models.service import Service
+from incident_intel.models.ticket import Ticket, TicketPriority, TicketStatus
 
-SCENARIOS: list[dict[str, dict[str, Any]]] = [
+S = TicketStatus
+P = TicketPriority
+SLA_HOURS = {P.P1: 1, P.P2: 4, P.P3: 24, P.P4: 72}
+STATUS_RANK = {S.OPEN: 0, S.IN_PROGRESS: 1, S.RESOLVED: 2, S.CLOSED: 3}
+
+# (days_ago, hour, service, status, priority, title)
+SPREAD_TICKETS = [
+    # 0-3 days
+    (
+        0,
+        9,
+        "payment-service",
+        S.OPEN,
+        P.P1,
+        "payment-service: checkout p95 latency above 2s after deploy",
+    ),
+    (1, 14, "api-gateway", S.OPEN, P.P3, "api-gateway: 5xx spike on /v1/search route"),
+    (
+        2,
+        11,
+        "auth-service",
+        S.IN_PROGRESS,
+        P.P2,
+        "auth-service: login success rate dipped below 95%",
+    ),
+    # 4-7 days
+    (4, 10, "monitoring", S.OPEN, P.P3, "monitoring: Prometheus scrape gaps on node exporters"),
+    (5, 16, "infra-vpn", S.OPEN, P.P4, "infra-vpn: intermittent disconnects for EU remote users"),
+    (
+        6,
+        9,
+        "payment-service",
+        S.OPEN,
+        P.P2,
+        "payment-service: webhook retries exhausted for Stripe callbacks",
+    ),
+    (5, 11, "api-gateway", S.IN_PROGRESS, P.P2, "api-gateway: upstream timeouts to auth-service"),
+    (
+        7,
+        15,
+        "auth-service",
+        S.IN_PROGRESS,
+        P.P3,
+        "auth-service: password reset emails delayed 10+ minutes",
+    ),
+    # 8-30 days
+    (
+        9,
+        10,
+        "payment-service",
+        S.OPEN,
+        P.P3,
+        "payment-service: duplicate charge reports from reconciliation",
+    ),
+    (12, 14, "api-gateway", S.OPEN, P.P2, "api-gateway: rate limit config drift between regions"),
+    (18, 9, "monitoring", S.OPEN, P.P4, "monitoring: Grafana dashboards slow to load"),
+    (25, 13, "infra-vpn", S.OPEN, P.P3, "infra-vpn: MTU mismatch causing slow file transfers"),
+    (
+        10,
+        11,
+        "auth-service",
+        S.IN_PROGRESS,
+        P.P2,
+        "auth-service: OAuth refresh token rotation failures",
+    ),
+    (
+        15,
+        16,
+        "payment-service",
+        S.IN_PROGRESS,
+        P.P3,
+        "payment-service: payment intents stuck in requires_capture",
+    ),
+    (21, 10, "api-gateway", S.IN_PROGRESS, P.P2, "api-gateway: route cache stale after deploy"),
+    (
+        28,
+        14,
+        "monitoring",
+        S.IN_PROGRESS,
+        P.P4,
+        "monitoring: noisy disk alerts causing alert fatigue",
+    ),
+    (11, 9, "auth-service", S.RESOLVED, P.P1, "auth-service: MFA push notifications not delivered"),
+    (
+        16,
+        15,
+        "payment-service",
+        S.RESOLVED,
+        P.P2,
+        "payment-service: refund queue backlog above threshold",
+    ),
+    (
+        22,
+        11,
+        "infra-vpn",
+        S.RESOLVED,
+        P.P3,
+        "infra-vpn: split DNS resolution failures on macOS clients",
+    ),
+    (
+        27,
+        10,
+        "api-gateway",
+        S.RESOLVED,
+        P.P3,
+        "api-gateway: websocket upgrade failures for mobile clients",
+    ),
+    (14, 13, "monitoring", S.CLOSED, P.P2, "monitoring: ELK indexing lag past 15 minutes"),
+    (
+        29,
+        9,
+        "payment-service",
+        S.CLOSED,
+        P.P4,
+        "payment-service: settlement report generation timeout",
+    ),
+    # 31-60 days
+    (35, 10, "auth-service", S.OPEN, P.P4, "auth-service: signup captcha false positives"),
+    (38, 14, "api-gateway", S.IN_PROGRESS, P.P3, "api-gateway: CORS misconfig for admin console"),
+    (52, 9, "monitoring", S.IN_PROGRESS, P.P3, "monitoring: blackbox probes flapping on ap-south"),
+    (
+        32,
+        11,
+        "payment-service",
+        S.RESOLVED,
+        P.P1,
+        "payment-service: 3DS challenge failures for EU cards",
+    ),
+    (36, 15, "infra-vpn", S.RESOLVED, P.P2, "infra-vpn: gateway CPU saturation during peak hours"),
+    (
+        41,
+        10,
+        "api-gateway",
+        S.RESOLVED,
+        P.P2,
+        "api-gateway: TLS handshake errors from legacy clients",
+    ),
+    (
+        45,
+        13,
+        "auth-service",
+        S.RESOLVED,
+        P.P3,
+        "auth-service: SAML assertion clock skew for partner IdP",
+    ),
+    (
+        50,
+        9,
+        "payment-service",
+        S.RESOLVED,
+        P.P3,
+        "payment-service: card vault sync lag behind primary",
+    ),
+    (
+        57,
+        16,
+        "monitoring",
+        S.RESOLVED,
+        P.P4,
+        "monitoring: retention policy misapplied to debug logs",
+    ),
+    (33, 12, "api-gateway", S.CLOSED, P.P1, "api-gateway: global 429s from misapplied rate tier"),
+    (43, 10, "infra-vpn", S.CLOSED, P.P2, "infra-vpn: client update rollout blocked on macOS 15"),
+    (
+        48,
+        14,
+        "auth-service",
+        S.CLOSED,
+        P.P3,
+        "auth-service: user lockout threshold triggering early",
+    ),
+    (
+        55,
+        11,
+        "payment-service",
+        S.CLOSED,
+        P.P2,
+        "payment-service: idempotency key collisions on retries",
+    ),
+    # 61-90 days
+    (
+        63,
+        10,
+        "monitoring",
+        S.IN_PROGRESS,
+        P.P4,
+        "monitoring: node exporter version drift across fleet",
+    ),
+    (
+        65,
+        9,
+        "payment-service",
+        S.RESOLVED,
+        P.P3,
+        "payment-service: chargeback webhook signature mismatch",
+    ),
+    (70, 14, "api-gateway", S.RESOLVED, P.P3, "api-gateway: canary weights not applied on rollout"),
+    (
+        76,
+        11,
+        "auth-service",
+        S.RESOLVED,
+        P.P2,
+        "auth-service: session cache evictions above baseline",
+    ),
+    (
+        82,
+        15,
+        "infra-vpn",
+        S.RESOLVED,
+        P.P3,
+        "infra-vpn: cert chain warning on newly imaged laptops",
+    ),
+    (
+        67,
+        10,
+        "payment-service",
+        S.CLOSED,
+        P.P1,
+        "payment-service: PSP outage failover to secondary",
+    ),
+    (72, 13, "monitoring", S.CLOSED, P.P3, "monitoring: alertmanager silences expired unnoticed"),
+    (78, 9, "api-gateway", S.CLOSED, P.P2, "api-gateway: gzip disabled on large response payloads"),
+    (85, 14, "auth-service", S.CLOSED, P.P1, "auth-service: JWT signing key rotation incident"),
+    (
+        88,
+        10,
+        "payment-service",
+        S.CLOSED,
+        P.P4,
+        "payment-service: sandbox credentials rotated, docs stale",
+    ),
+]
+
+SCENARIOS: list[dict[str, Any]] = [
     {  # Scenario 1: payment-service — DB connection pool exhaustion
         "service": {
             "name": "payment-service",
@@ -35,9 +274,12 @@ SCENARIOS: list[dict[str, dict[str, Any]]] = [
                 "Checkout flow is failing for approximately 40% of users. "
                 "Started around 14:30 UTC after a traffic spike from a marketing campaign."
             ),
-            "priority": "p1",
+            "status": S.OPEN,
+            "priority": P.P1,
             "assignee": "John Doe",
             "reporter": "Amy Chen",
+            "days_ago": 2,
+            "hour": 1,
         },
         "documents": [
             {
@@ -193,9 +435,12 @@ Payment Service team owns the schema. DBA team owns the host, replication, and b
                 "Approximately 200 remote workers are locked out of internal systems. "
                 "Auto-renewal via certbot was not configured for VPN gateway certificate."
             ),
-            "priority": "p1",
+            "status": S.CLOSED,
+            "priority": P.P1,
             "assignee": "Sarah Kim",
             "reporter": "Mike Torres",
+            "days_ago": 70,
+            "hour": 2,
         },
         "documents": [
             {
@@ -361,9 +606,12 @@ No, by policy all corporate traffic is routed through VPN for DLP inspection. No
                 "Login success rate has dropped to 70% due to pods cycling. "
                 "Issue started after deploy v2.4.1 which introduced in-memory session caching."
             ),
-            "priority": "p2",
+            "status": S.IN_PROGRESS,
+            "priority": P.P2,
             "assignee": "Lisa Park",
             "reporter": "David Nguyen",
+            "days_ago": 21,
+            "hour": 3,
         },
         "documents": [
             {
@@ -540,9 +788,12 @@ JVM-based services with documented sawtooth GC patterns may exceed the 2x limit 
                 "If disk reaches 100%, Prometheus and Elasticsearch will stop ingesting data "
                 "and we will lose observability across all services."
             ),
-            "priority": "p2",
+            "status": S.RESOLVED,
+            "priority": P.P2,
             "assignee": "Carlos Ruiz",
             "reporter": "Priya Sharma",
+            "days_ago": 42,
+            "hour": 4,
         },
         "documents": [
             {
@@ -717,9 +968,12 @@ Alert when daily volume per service exceeds 2x the 30-day average. Sudden volume
                 "tiers to the default free-tier value. "
                 "Affected customers: Acme Corp, GlobalTech, DataFlow Inc — all on enterprise plans."
             ),
-            "priority": "p2",
+            "status": S.IN_PROGRESS,
+            "priority": P.P2,
             "assignee": "Rachel Adams",
             "reporter": "Tom Bradley",
+            "days_ago": 6,
+            "hour": 5,
         },
         "documents": [
             {
@@ -919,6 +1173,98 @@ Use the metrics endpoint at api.company.com/v1/usage. It returns rolling 1h / 24
     },
 ]
 
+parser = argparse.ArgumentParser(
+    description="Seed the dev/live DB. Default: tickets-only (fast, no embeddings); --full also re-seeds documents."
+)
+parser.add_argument(
+    "--full",
+    action="store_true",
+    help="Also wipe + re-seed documents (re-embeds via OpenAI). Default: tickets-only.",
+)
+
+
+def _compute_lifecycle(
+    created_at: datetime, status: TicketStatus, priority: TicketPriority, factor: float
+) -> tuple[datetime | None, datetime | None, datetime | None]:
+    """Compute lifecycle timestamps (started, resolved, closed). Each is None until the ticket has reached that state."""
+    rank = STATUS_RANK[status]
+    sla = timedelta(hours=SLA_HOURS[priority])
+    grace = timedelta(hours=24)
+
+    started_at = created_at + 0.15 * sla if rank >= 1 else None
+    resolved_at = created_at + factor * sla if rank >= 2 else None
+    closed_at = resolved_at + grace if rank >= 3 and resolved_at is not None else None
+
+    return started_at, resolved_at, closed_at
+
+
+def _build_ticket(
+    service_id: UUID,
+    title: str,
+    status: TicketStatus,
+    priority: TicketPriority,
+    created_at: datetime,
+    factor: float,
+    description: str | None = None,
+    assignee: str | None = None,
+    reporter: str | None = None,
+) -> Ticket:
+    """Build lifecycle and ticket construction for seeding of tickets."""
+    started_at, resolved_at, closed_at = _compute_lifecycle(created_at, status, priority, factor)
+    return Ticket(
+        service_id=service_id,
+        title=title,
+        status=status,
+        priority=priority,
+        created_at=created_at,
+        started_at=started_at,
+        resolved_at=resolved_at,
+        closed_at=closed_at,
+        description=description,
+        assignee=assignee,
+        reporter=reporter,
+    )
+
+
+async def seed_spread_tickets(session: AsyncSession, service_id_by_name: dict[str, UUID]) -> None:
+    """Seed data for spread tickets via ORM."""
+    now = datetime.now(UTC)
+    for i, row in enumerate(SPREAD_TICKETS):
+        days_ago, hour, service_name, status, priority, title = row
+        created_at = now - timedelta(days=days_ago, hours=hour)
+        factor = 1.2 if i % 7 == 0 else 0.85
+        service_id = service_id_by_name[service_name]
+        ticket = _build_ticket(
+            service_id=service_id,
+            title=title,
+            status=status,
+            priority=priority,
+            created_at=created_at,
+            factor=factor,
+        )
+        session.add(ticket)
+
+
+async def seed_scenario_tickets(session: AsyncSession, service_id_by_name: dict[str, UUID]) -> None:
+    """Seed data for scenario tickets via ORM."""
+    now = datetime.now(UTC)
+    for i, scenario in enumerate(SCENARIOS):
+        ticket_data = scenario["ticket"]
+        created_at = now - timedelta(days=ticket_data["days_ago"], hours=ticket_data["hour"])
+        factor = 1.2 if i % 7 == 0 else 0.85
+        ticket = _build_ticket(
+            service_id=service_id_by_name[scenario["service"]["name"]],
+            title=ticket_data["title"],
+            description=ticket_data["description"],
+            status=ticket_data["status"],
+            priority=ticket_data["priority"],
+            assignee=ticket_data["assignee"],
+            reporter=ticket_data["reporter"],
+            created_at=created_at,
+            factor=factor,
+        )
+        session.add(ticket)
+
 
 async def ensure_service(session: AsyncSession, service_data: dict[str, Any]) -> UUID:
     """Query Service by name, create if not found.
@@ -926,7 +1272,7 @@ async def ensure_service(session: AsyncSession, service_data: dict[str, Any]) ->
     ORM query-then-insert.
     """
     stmt = select(Service.id).where(Service.name == service_data["name"])
-    service_id = await session.scalar(stmt)
+    service_id: UUID | None = await session.scalar(stmt)
 
     if service_id is None:
         new_service = Service(**service_data)
@@ -938,47 +1284,129 @@ async def ensure_service(session: AsyncSession, service_data: dict[str, Any]) ->
     return service_id
 
 
-async def seed_scenario(
+async def seed_documents(
     client: AsyncClient,
     service_id: UUID,
-    ticket_data: dict[str, str],  # without service_id
     documents_data: list[dict[str, str]],  # without service_id
 ) -> None:
-    """Seed data for tickets and documents via existing API POST endpoints."""
+    """Seed data for documents via existing API POST endpoints."""
     # Inject service_id
-    payload_ticket = {**ticket_data, "service_id": str(service_id)}
-    response_ticket = await client.post("/api/v1/tickets", json=payload_ticket)
-    response_ticket.raise_for_status()
-    print(f"Created ticket: {response_ticket.json()['title']}")
-
     for document_data in documents_data:
         payload_document = {**document_data, "service_id": str(service_id)}
 
         response_document = await client.post("/api/v1/documents", json=payload_document)
         response_document.raise_for_status()
-        print(f"Created document: {response_document.json()['title']}")
 
 
-async def main() -> None:
-    """."""
-    service_ids = []
+async def report(full: bool) -> None:
+    """Print comparison between source data and actual data written in database."""
+    # actual data written
+    async with Session() as session:
+        actual_total_documents = await session.scalar(select(func.count()).select_from(Document))
+        actual_total_tickets = await session.scalar(select(func.count()).select_from(Ticket))
+        actual_status_rows = (
+            await session.execute(
+                select(Ticket.status, func.count()).group_by(Ticket.status).order_by(Ticket.status)
+            )
+        ).all()
+        actual_priority_rows = (
+            await session.execute(
+                select(Ticket.priority, func.count())
+                .group_by(Ticket.priority)
+                .order_by(Ticket.priority)
+            )
+        ).all()
+    actual_status = dict(actual_status_rows)
+    actual_priority = dict(actual_priority_rows)
+
+    # expected data to write
+    expected_total_documents = sum(len(s["documents"]) for s in SCENARIOS) if full else 0
+    expected_total_tickets = len(SPREAD_TICKETS) + len(SCENARIOS)
+    expected_status = Counter(row[3] for row in SPREAD_TICKETS) + Counter(
+        s["ticket"]["status"] for s in SCENARIOS
+    )
+    expected_priority = Counter(row[4] for row in SPREAD_TICKETS) + Counter(
+        s["ticket"]["priority"] for s in SCENARIOS
+    )
+
+    # prepare to print
+    docs_ok = actual_total_documents == expected_total_documents
+    tickets_ok = actual_total_tickets == expected_total_tickets
+    status_ok = {st: actual_status.get(st, 0) == expected_status[st] for st in expected_status}
+    priority_ok = {
+        pr: actual_priority.get(pr, 0) == expected_priority[pr] for pr in expected_priority
+    }
+
+    if full:
+        docs_total = (
+            f"{actual_total_documents} / {expected_total_documents} {'✓' if docs_ok else '✗'}"
+        )
+    else:
+        docs_total = f"{actual_total_documents} (untouched)"
+    tickets_total = (
+        f"{actual_total_tickets} / {expected_total_tickets} {'✓' if tickets_ok else '✗'}"
+    )
+    status_line = " | ".join(
+        f"{st.value}: {actual_status.get(st, 0)}/{expected_status[st]} {'✓' if status_ok[st] else '✗'}"
+        for st in status_ok
+    )
+    priority_line = " | ".join(
+        f"{pr.value}: {actual_priority.get(pr, 0)} / {expected_priority[pr]} {'✓' if priority_ok[pr] else '✗'}"
+        for pr in priority_ok
+    )
+
+    print(f"""
+{"=" * 30}
+Seed verification — mode: {"full" if full else "tickets-only"}
+  Documents (total):   {docs_total}
+  Tickets (total):     {tickets_total}
+  Tickets by status:   {status_line}
+  Tickets by priority: {priority_line}
+{"=" * 30}
+""")
+
+    # gate
+    checks = [
+        *([docs_ok] if full else []),
+        tickets_ok,
+        *status_ok.values(),
+        *priority_ok.values(),
+    ]
+    if not all(checks):
+        raise SystemExit(1)
+
+
+async def main(full: bool) -> None:
+    """Seed data in database based on flag (with '--full' flag: tickets + documents, without flag: only tickets)."""
+    service_id_by_name: dict[str, UUID] = {}
     async with Session() as session:
         for scenario in SCENARIOS:
             service_id = await ensure_service(
                 session=session,
                 service_data=scenario["service"],
             )
-            service_ids.append(service_id)
+            service_id_by_name[scenario["service"]["name"]] = service_id
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        for scenario, service_id in zip(SCENARIOS, service_ids, strict=True):
-            await seed_scenario(
-                client=client,
-                service_id=service_id,
-                ticket_data=scenario["ticket"],
-                documents_data=scenario["documents"],
-            )
+        await session.execute(delete(Ticket))
+        if full:
+            await session.execute(delete(Document))
+
+        await seed_scenario_tickets(session, service_id_by_name)
+        await seed_spread_tickets(session, service_id_by_name)
+        await session.commit()
+
+    if full:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            for scenario in SCENARIOS:
+                await seed_documents(
+                    client=client,
+                    service_id=service_id_by_name[scenario["service"]["name"]],
+                    documents_data=scenario["documents"],
+                )
+
+    await report(full)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    args = parser.parse_args()
+    asyncio.run(main(full=args.full))

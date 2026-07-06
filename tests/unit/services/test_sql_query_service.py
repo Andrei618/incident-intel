@@ -129,7 +129,7 @@ async def test_query_tickets_list_with_multiple_filters() -> None:
             "title": "test_title",
             "service_name": "test-service_name",
             "status": "test_status",
-            "created_at": "2026-03-01",
+            "created_at": datetime(2026, 3, 1, tzinfo=UTC),
         }
     ]
 
@@ -143,6 +143,8 @@ async def test_query_tickets_list_with_multiple_filters() -> None:
     assert "There is 1 ticket" in result
     assert "test_title" in result
     assert "test-service_name" in result
+    assert "2026-03-01" in result
+    assert "00:00:00" not in result
 
 
 async def test_query_tickets_empty_list_result() -> None:
