@@ -4,5 +4,33 @@
       "chunk_index": 0,
       "content_sha256": "b0a62b725c6b6efe1d1a458ec02f816e0bab50bbd54f7a11ce0b9cd47093fdba"
     }
+  ],
+  "api-gateway-rate-limit-runbook": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "833b69c344c4a83246bc3fb258e5a6a96ceb80bd7b10560dd6e12f325632f07d"
+    },
+    {
+      "chunk_index": 1,
+      "content_sha256": "44124afafd4151c6701aeb5649699b034646089b19ea949a99908e355b75397b"
+    }
+  ],
+  "auth-service-memory-runbook": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "7c156cb70e602299ea4c39fdc0ccff2dd95ecbe9c35fb5875df7ec7261b08b6e"
+    }
+  ],
+  "monitoring-disk-space-runbook": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "e0c57c4fd6fb95ade4771b237f99bf29030d7eb39d25440facfc1d80230526e8"
+    }
+  ],
+  "vpn-cert-renewal-runbook": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "7284f974ff102737389f03d07eb963683dd79037dec6b1a92e650c3f75d4327c"
+    }
   ]
 }
