@@ -1,5 +1,7 @@
 """Hand-authored fixture data for the RAG eval (documents, tickets)."""
 
+from datetime import date
+
 DOCUMENTS = [
     {
         "service": "payment-service",
@@ -320,4 +322,23 @@ echo "0 3 * * * certbot renew --quiet --post-hook 'systemctl restart openvpn@ser
 - If VPN service does not restart after renewal: see VPN Gateway Recovery Runbook
 """,
     },
+]
+
+
+EVAL_TODAY = date(2026, 6, 1)
+
+
+TICKETS = [
+    {"service": "payment-service", "days_ago": 2, "status": "open", "priority": "p1"},
+    {"service": "api-gateway", "days_ago": 4, "status": "open", "priority": "p3"},
+    {"service": "auth-service", "days_ago": 6, "status": "in_progress", "priority": "p2"},
+    {"service": "payment-service", "days_ago": 12, "status": "open", "priority": "p2"},
+    {"service": "monitoring", "days_ago": 18, "status": "resolved", "priority": "p3"},
+    {"service": "auth-service", "days_ago": 22, "status": "open", "priority": "p4"},
+    {"service": "api-gateway", "days_ago": 28, "status": "resolved", "priority": "p2"},
+    {"service": "payment-service", "days_ago": 35, "status": "resolved", "priority": "p1"},
+    {"service": "infra-vpn", "days_ago": 40, "status": "closed", "priority": "p2"},
+    {"service": "monitoring", "days_ago": 45, "status": "in_progress", "priority": "p3"},
+    {"service": "infra-vpn", "days_ago": 55, "status": "closed", "priority": "p3"},
+    {"service": "auth-service", "days_ago": 60, "status": "resolved", "priority": "p4"},
 ]
