@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import json
+import os
 import sys
 from dataclasses import dataclass
 from datetime import date
@@ -159,6 +160,7 @@ def main() -> None:
     isolation.guard()
     print("bound to:", isolation.database.DATABASE_URL)
     dataset = load_dataset()
+    os.environ["EVAL_TODAY"] = dataset.eval_today.isoformat()
     asyncio.run(run_eval(dataset))
 
 
