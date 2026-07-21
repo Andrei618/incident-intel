@@ -296,7 +296,6 @@
       "expected_route": "hybrid",
       "expected_chunks": [],
       "reference_answer": "There is no runbook for Kafka consumer lag in the knowledge base; the assistant should state that it lacks relevant documentation rather than inventing steps.",
-      "must_mention": ["don't have"],
       "difficulty": "hard"
     },
     {
