@@ -8,6 +8,7 @@ import sys
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import select
@@ -15,7 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.evals import isolation  # isort: skip — must load first: sets env before incident_intel
 
+from incident_intel.llm.openai_provider import OpenAIChatProvider
 from incident_intel.models.document import Document, DocumentChunk
+from incident_intel.services.chat_service import _build_messages
+from incident_intel.services.classification_service import classify_query
+from incident_intel.services.dispatch import dispatch
 from tests.evals import fixture_data
 
 DATASET_PATH = Path(__file__).parent / "golden_dataset.json"
@@ -75,6 +80,26 @@ class Dataset:
     dataset_version: str
     eval_today: date
     cases: list[Case]
+
+
+@dataclass
+class CaseResult:
+    """What the pipeline actually produced for one evaluation case.
+
+    - case_id - id of the case in the golden dataset.
+    - predicted_route - route chosen by classify_query.
+    - actual_route - route the dispatcher actually used; differs from predicted after a fallback.
+    - retrieved - (document_id, chunk_index) pairs in rank order, best first (empty for sql/clarify).
+    - context - context the dispatcher produced; SQL counts are asserted against this.
+    - answer - final answer text from the chat model.
+    """
+
+    case_id: str
+    predicted_route: Literal["sql", "hybrid", "clarify"]
+    actual_route: str
+    retrieved: list[tuple[UUID, int]]
+    context: str
+    answer: str
 
 
 def load_dataset(path: Path = DATASET_PATH) -> Dataset:
@@ -148,11 +173,49 @@ async def verify_chunk_hashes(
         )
 
 
-async def run_eval(dataset: Dataset) -> None:
-    """Async part of evaluation: resolution of doc_key and drift gate."""
+async def run_case(
+    session: AsyncSession,
+    provider: OpenAIChatProvider,
+    case: Case,
+) -> CaseResult:
+    """Run evaluation for one case."""
+    intent = await classify_query(query=case.question)
+    result = await dispatch(session=session, intent=intent, original_query=case.question)
+    messages = _build_messages(
+        context=result.context,
+        message=case.question,
+        history=[],
+        sources=result.sources,
+        route=result.route,
+    )
+    answer = await provider.generate(messages)
+    return CaseResult(
+        case_id=case.id,
+        predicted_route=intent.route,
+        actual_route=result.route,
+        retrieved=[(s["document_id"], s["chunk_index"]) for s in result.sources],
+        context=result.context,
+        answer=answer,
+    )
+
+
+async def run_eval(dataset: Dataset) -> list[CaseResult]:
+    """Async part of evaluation: resolution of doc_key and drift gate, running cases."""
     async with isolation.database.Session() as session:
         doc_ids = await resolve_doc_keys(session)
         await verify_chunk_hashes(session, dataset, doc_ids)
+        provider = OpenAIChatProvider(temperature=0.0)
+        results = []
+        cases = dataset.cases
+        n = len(cases)
+        for i, case in enumerate(cases, start=1):
+            try:
+                case_result = await run_case(session, provider, case)
+                results.append(case_result)
+                print(f"[{i}/{n}] {case.id} → {case_result.actual_route}")
+            except Exception as e:
+                print(f"FAILED {case.id}: {e}")
+        return results
 
 
 def main() -> None:
@@ -161,7 +224,8 @@ def main() -> None:
     print("bound to:", isolation.database.DATABASE_URL)
     dataset = load_dataset()
     os.environ["EVAL_TODAY"] = dataset.eval_today.isoformat()
-    asyncio.run(run_eval(dataset))
+    results = asyncio.run(run_eval(dataset))
+    print(len(results))
 
 
 if __name__ == "__main__":
