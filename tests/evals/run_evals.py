@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from datetime import date
@@ -21,6 +22,7 @@ from incident_intel.models.document import Document, DocumentChunk
 from incident_intel.services.chat_service import _build_messages
 from incident_intel.services.classification_service import classify_query
 from incident_intel.services.dispatch import dispatch
+from incident_intel.services.sql_query_service import _count_phrase
 from tests.evals import fixture_data
 from tests.evals.metrics import precision_at_k, recall_at_k, reciprocal_rank_at_k
 
@@ -240,6 +242,20 @@ def score_case(case: Case, case_result: CaseResult, doc_ids: dict[str, UUID]) ->
         precision = precision_at_k(case_result.retrieved, relevant, RETRIEVAL_K)
         rr = reciprocal_rank_at_k(case_result.retrieved, relevant, RETRIEVAL_K)
 
+    # SQL scoring
+    if case.expected_count is None:
+        sql_ok = None
+    else:
+        layer1 = _count_phrase(case.expected_count, "ticket") in case_result.context
+        layer2 = re.search(rf"\b{case.expected_count}\b", case_result.answer) is not None
+        sql_ok = layer1 and layer2
+
+    # must_mention scoring
+    if case.must_mention is None:
+        mention_ok = None
+    else:
+        mention_ok = all(m.lower() in case_result.answer.lower() for m in case.must_mention)
+
     return CaseScore(
         case_id=case.id,
         route_ok=route_ok,
@@ -247,8 +263,8 @@ def score_case(case: Case, case_result: CaseResult, doc_ids: dict[str, UUID]) ->
         recall=recall,
         precision=precision,
         rr=rr,
-        sql_ok=None,
-        mentions_ok=None,
+        sql_ok=sql_ok,
+        mentions_ok=mention_ok,
     )
 
 
@@ -294,9 +310,6 @@ def main() -> None:
     correct = sum(s.route_ok for s in scores)
     diverged = sum(s.route_diverged for s in scores)
     print(f"routing: {correct}/{len(scores)} correct, {diverged} diverged")
-    for s in scores:
-        if s.recall is not None:
-            print(f"  {s.case_id}: recall={s.recall} rr={s.rr}")
 
 
 if __name__ == "__main__":
