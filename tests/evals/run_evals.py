@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
+import openai
+from openai.types.chat import ChatCompletionMessageParam
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +31,45 @@ from tests.evals.metrics import precision_at_k, recall_at_k, reciprocal_rank_at_
 
 DATASET_PATH = Path(__file__).parent / "golden_dataset.json"
 RETRIEVAL_K = 5  # must match dispatch(..., limit=5) — the retrieval cutoff
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "not-set")
+JUDGE_MODEL = os.getenv("OPENAI_MODEL_JUDGE", "gpt-4o")
+JUDGE_PASS = 4  # pass/fail threshold for judge calibration
+JUDGE_RUBRIC = """\
+You are a strict evaluator of an IT-operations assistant. You receive a user QUESTION, \
+the RETRIEVED CONTEXT the assistant was given, a human-written REFERENCE ANSWER, and the \
+ANSWER TO GRADE. Score the answer to grade on two independent dimensions, each from 1 \
+(worst) to 5 (best).
+
+FAITHFULNESS - is every claim supported by the retrieved context?
+- 5: fully grounded; nothing invented or contradicting the context.
+- 3: mostly grounded, with a minor unsupported detail.
+- 1: fabricates steps, commands, or facts absent from the context, or contradicts it.
+If the context is empty or does not cover the question, an answer that honestly states it \
+lacks the information is fully faithful (5). Inventing an answer with no supporting \
+context is the worst failure (1).
+
+RELEVANCE - does the answer address the question, completely?
+- 5: directly and completely answers it, covering the key actions in the reference answer.
+- 3: on topic but omits an important step, or includes irrelevant padding.
+- 1: off topic, answers a different question, or declines when the context clearly \
+contained the answer.
+Judge completeness against the reference answer; an answer that drops its central action \
+is incomplete. An honest refusal scores high on relevance only when the context genuinely \
+lacks the answer.
+
+Rules:
+- Grade the two dimensions independently: a fluent, on-topic answer can still be \
+unfaithful, and a faithful answer can still be irrelevant.
+- Judge only what is written; do not reward length or confident tone.
+- In your reasoning, give one or two sentences naming the specific claim or omission \
+behind each score.
+"""
+
+judge_client = openai.AsyncOpenAI(
+    api_key=OPENAI_API_KEY,
+    timeout=30.0,
+    max_retries=2,
+)
 
 
 @dataclass
@@ -130,6 +172,35 @@ class CaseScore:
     mentions_ok: bool | None
 
 
+class JudgeVerdict(BaseModel):
+    """The LLM judge's structured verdict for one answer.
+
+    - faithfulness - 1-5: is every claim grounded in the retrieved context?
+    - relevance - 1-5: does the answer address the question, completely?
+    - reasoning - one or two sentences justifying the two scores.
+    """
+
+    faithfulness: int = Field(ge=1, le=5)
+    relevance: int = Field(ge=1, le=5)
+    reasoning: str
+
+
+@dataclass
+class JudgeResult:
+    """The LLM judge's verdict for one case, keyed to the golden dataset by case_id.
+
+    - case_id - id of the case in the golden dataset.
+    - faithfulness - 1-5: is every claim grounded in the retrieved context?
+    - relevance - 1-5: does the answer address the question?
+    - reasoning - the judge's brief justification for the two scores.
+    """
+
+    case_id: str
+    faithfulness: int
+    relevance: int
+    reasoning: str
+
+
 def load_dataset(path: Path = DATASET_PATH) -> Dataset:
     """Load the golden dataset from JSON file."""
     raw = json.loads(path.read_text())
@@ -228,7 +299,7 @@ async def run_case(
 
 
 def score_case(case: Case, case_result: CaseResult, doc_ids: dict[str, UUID]) -> CaseScore:
-    """Score parameters of one case."""
+    """Compute all deterministic scores for one case."""
     # route scoring
     route_ok = case.expected_route == case_result.predicted_route
     route_diverged = case_result.predicted_route != case_result.actual_route
@@ -252,9 +323,9 @@ def score_case(case: Case, case_result: CaseResult, doc_ids: dict[str, UUID]) ->
 
     # must_mention scoring
     if case.must_mention is None:
-        mention_ok = None
+        mentions_ok = None
     else:
-        mention_ok = all(m.lower() in case_result.answer.lower() for m in case.must_mention)
+        mentions_ok = all(m.lower() in case_result.answer.lower() for m in case.must_mention)
 
     return CaseScore(
         case_id=case.id,
@@ -264,12 +335,12 @@ def score_case(case: Case, case_result: CaseResult, doc_ids: dict[str, UUID]) ->
         precision=precision,
         rr=rr,
         sql_ok=sql_ok,
-        mentions_ok=mention_ok,
+        mentions_ok=mentions_ok,
     )
 
 
 async def run_all(dataset: Dataset) -> tuple[list[CaseResult], dict[str, UUID]]:
-    """Run all cases."""
+    """Resolve keys, run the drift gate, then drive every case."""
     async with isolation.database.Session() as session:
         doc_ids = await resolve_doc_keys(session)
         await verify_chunk_hashes(session, dataset, doc_ids)
@@ -285,6 +356,90 @@ async def run_all(dataset: Dataset) -> tuple[list[CaseResult], dict[str, UUID]]:
             except Exception as e:
                 print(f"FAILED {case.id}: {e}")
         return results, doc_ids
+
+
+async def judge_answer(
+    question: str, reference: str, context: str, answer: str
+) -> JudgeVerdict | None:
+    """Ask the LLM judge to grade one answer; returns None on refusal or parse failure."""
+    messages: list[ChatCompletionMessageParam] = [
+        {"role": "system", "content": JUDGE_RUBRIC},
+        {
+            "role": "user",
+            "content": (
+                f"Question:\n{question}\n\n"
+                f"Reference answer:\n{reference}\n\n"
+                f"Retrieved context:\n{context}\n\n"
+                f"Answer to grade:\n{answer}"
+            ),
+        },
+    ]
+    response = await judge_client.chat.completions.parse(
+        model=JUDGE_MODEL,
+        messages=messages,
+        response_format=JudgeVerdict,
+        temperature=0.0,
+    )
+    message = response.choices[0].message
+    if message.refusal is not None or message.parsed is None:
+        return None
+    return message.parsed
+
+
+async def judge_all(dataset: Dataset, results: list[CaseResult]) -> list[JudgeResult]:
+    """Grade each golden case's answer with the LLM judge (faithfulness + relevance).
+
+    Only cases with a reference_answer (free-text hybrid/adversarial) are judged;
+    SQL and clarify cases are skipped. Returns one JudgeResult per judged case.
+    """
+    cases_by_id = {c.id: c for c in dataset.cases}
+    judge_results = []
+    for case_result in results:
+        case = cases_by_id[case_result.case_id]
+        if case.reference_answer is None:  # only free-text answers get judged
+            continue
+        verdict = await judge_answer(
+            question=case.question,
+            reference=case.reference_answer,  # the ideal answer
+            context=case_result.context,  # the ACTUALLY retrieved context
+            answer=case_result.answer,  # the pipeline's final generated answer
+        )
+        if verdict is None:
+            continue
+        judge_results.append(
+            JudgeResult(
+                case_id=case_result.case_id,
+                faithfulness=verdict.faithfulness,
+                relevance=verdict.relevance,
+                reasoning=verdict.reasoning,
+            )
+        )
+    return judge_results
+
+
+async def validate_judge(dataset: Dataset) -> tuple[int, int, int]:
+    """Validate judge on calibration dataset (judge_calibration.json)."""
+    raw = json.loads((Path(__file__).parent / "judge_calibration.json").read_text())
+    cases_by_id = {c.id: c for c in dataset.cases}
+    agreed = 0
+    errored = 0
+    for item in raw["items"]:
+        ref = cases_by_id[item["base_case"]].reference_answer
+        verdict = await judge_answer(
+            question=item["question"],
+            reference=ref,
+            context=ref,
+            answer=item["answer"],
+        )
+        if verdict is None:
+            errored += 1
+        else:
+            predicted_pass = min(verdict.faithfulness, verdict.relevance) >= JUDGE_PASS
+            expected_pass = item["expected_verdict"] == "pass"
+            agrees = predicted_pass == expected_pass
+            if agrees:
+                agreed += 1
+    return agreed, errored, len(raw["items"])
 
 
 def score_all(
@@ -305,11 +460,20 @@ def main() -> None:
     print("bound to:", isolation.database.DATABASE_URL)
     dataset = load_dataset()
     os.environ["EVAL_TODAY"] = dataset.eval_today.isoformat()
+
+    # drive + score
     results, doc_ids = asyncio.run(run_all(dataset))
     scores = score_all(dataset, results, doc_ids)
     correct = sum(s.route_ok for s in scores)
     diverged = sum(s.route_diverged for s in scores)
     print(f"routing: {correct}/{len(scores)} correct, {diverged} diverged")
+
+    # validate judge
+    agreed, errored, total = asyncio.run(validate_judge(dataset))
+    print(f"agreed: {agreed}/{total}, errored: {errored}")
+
+    # judge golden dataset
+    asyncio.run(judge_all(dataset, results))
 
 
 if __name__ == "__main__":

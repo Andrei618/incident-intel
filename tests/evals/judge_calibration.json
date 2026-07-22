@@ -1,6 +1,6 @@
 {
   "calibration_version": "1.0",
-  "note": "Validates the LLM judge (Stage D4), not the pipeline. Each item is a hand-written answer with a human-known grade; run the judge on these and confirm it agrees. question/context are denormalized from golden_dataset.json via base_case for standalone readability; base_case is the source of truth.",
+  "note": "Validates the LLM judge, not the RAG pipeline. Each item is a hand-written answer with a human-assigned grade; run the judge on these and confirm it agrees before trusting it on the golden dataset. `question` is denormalized from golden_dataset.json via base_case for readability; base_case is the source of truth for the reference answer.",
   "items": [
     {
       "id": "cal-pool-good",
