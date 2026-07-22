@@ -22,8 +22,10 @@ from incident_intel.services.chat_service import _build_messages
 from incident_intel.services.classification_service import classify_query
 from incident_intel.services.dispatch import dispatch
 from tests.evals import fixture_data
+from tests.evals.metrics import precision_at_k, recall_at_k, reciprocal_rank_at_k
 
 DATASET_PATH = Path(__file__).parent / "golden_dataset.json"
+RETRIEVAL_K = 5  # must match dispatch(..., limit=5) — the retrieval cutoff
 
 
 @dataclass
@@ -100,6 +102,30 @@ class CaseResult:
     retrieved: list[tuple[UUID, int]]
     context: str
     answer: str
+
+
+@dataclass
+class CaseScore:
+    """One case's scores. Each judgment is None when it does not apply to the case.
+
+    - case_id - id of the case in the golden dataset.
+    - route_ok - the predicted route matched the expected route.
+    - route_diverged - the dispatcher's actual route differed from the predicted one (a silent fallback).
+    - recall - recall@k over the expected chunks (None for non-retrieval cases).
+    - precision - precision@k over the expected chunks (None for non-retrieval cases).
+    - rr - reciprocal rank of the first relevant chunk (None for non-retrieval cases).
+    - sql_ok - both SQL layers passed: expected count-phrase in the context AND the count in the answer (None for non-SQL cases).
+    - mentions_ok - every must_mention substring is present in the answer (None when the case has no must_mention).
+    """
+
+    case_id: str
+    route_ok: bool
+    route_diverged: bool
+    recall: float | None
+    precision: float | None
+    rr: float | None
+    sql_ok: bool | None
+    mentions_ok: bool | None
 
 
 def load_dataset(path: Path = DATASET_PATH) -> Dataset:
@@ -199,8 +225,35 @@ async def run_case(
     )
 
 
-async def run_eval(dataset: Dataset) -> list[CaseResult]:
-    """Async part of evaluation: resolution of doc_key and drift gate, running cases."""
+def score_case(case: Case, case_result: CaseResult, doc_ids: dict[str, UUID]) -> CaseScore:
+    """Score parameters of one case."""
+    # route scoring
+    route_ok = case.expected_route == case_result.predicted_route
+    route_diverged = case_result.predicted_route != case_result.actual_route
+
+    # retrieval scoring
+    if case.expected_chunks is None:
+        recall = precision = rr = None
+    else:
+        relevant = {(doc_ids[ec.doc_key], ec.chunk_index) for ec in case.expected_chunks}
+        recall = recall_at_k(case_result.retrieved, relevant, RETRIEVAL_K)
+        precision = precision_at_k(case_result.retrieved, relevant, RETRIEVAL_K)
+        rr = reciprocal_rank_at_k(case_result.retrieved, relevant, RETRIEVAL_K)
+
+    return CaseScore(
+        case_id=case.id,
+        route_ok=route_ok,
+        route_diverged=route_diverged,
+        recall=recall,
+        precision=precision,
+        rr=rr,
+        sql_ok=None,
+        mentions_ok=None,
+    )
+
+
+async def run_all(dataset: Dataset) -> tuple[list[CaseResult], dict[str, UUID]]:
+    """Run all cases."""
     async with isolation.database.Session() as session:
         doc_ids = await resolve_doc_keys(session)
         await verify_chunk_hashes(session, dataset, doc_ids)
@@ -215,7 +268,19 @@ async def run_eval(dataset: Dataset) -> list[CaseResult]:
                 print(f"[{i}/{n}] {case.id} → {case_result.actual_route}")
             except Exception as e:
                 print(f"FAILED {case.id}: {e}")
-        return results
+        return results, doc_ids
+
+
+def score_all(
+    dataset: Dataset, results: list[CaseResult], doc_ids: dict[str, UUID]
+) -> list[CaseScore]:
+    """Score all cases."""
+    cases_by_id = {case.id: case for case in dataset.cases}
+    scores = []
+    for case_result in results:
+        case = cases_by_id[case_result.case_id]
+        scores.append(score_case(case, case_result, doc_ids))
+    return scores
 
 
 def main() -> None:
@@ -224,8 +289,14 @@ def main() -> None:
     print("bound to:", isolation.database.DATABASE_URL)
     dataset = load_dataset()
     os.environ["EVAL_TODAY"] = dataset.eval_today.isoformat()
-    results = asyncio.run(run_eval(dataset))
-    print(len(results))
+    results, doc_ids = asyncio.run(run_all(dataset))
+    scores = score_all(dataset, results, doc_ids)
+    correct = sum(s.route_ok for s in scores)
+    diverged = sum(s.route_diverged for s in scores)
+    print(f"routing: {correct}/{len(scores)} correct, {diverged} diverged")
+    for s in scores:
+        if s.recall is not None:
+            print(f"  {s.case_id}: recall={s.recall} rr={s.rr}")
 
 
 if __name__ == "__main__":
