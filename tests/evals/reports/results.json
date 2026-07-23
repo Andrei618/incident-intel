@@ -1,0 +1,1043 @@
+{
+  "metadata": {
+    "run_date": "2026-07-23T12:49:02.091683+00:00",
+    "chat_model": "gpt-4o-mini",
+    "embedding_model": "text-embedding-3-small",
+    "judge_model": "gpt-4o",
+    "eval_temperature": 0.0,
+    "prod_temperature": 0.2,
+    "dataset_version": "1.0",
+    "eval_today": "2026-06-01",
+    "fixture_hash": "1d16c4a67876",
+    "calibration": "8/8",
+    "system_fingerprint": "not captured"
+  },
+  "summary": {
+    "routing_correct": 30,
+    "routing_total": 31,
+    "routing_diverged": 0,
+    "retrieval_n": 17,
+    "mean_recall": 0.9411764705882353,
+    "mean_precision": 0.2,
+    "mean_mrr": 0.9117647058823529,
+    "sql_pass": 10,
+    "sql_n": 11,
+    "mentions_pass": 19,
+    "mentions_n": 19,
+    "judge_n": 18,
+    "mean_faithfulness": 5.0,
+    "mean_relevance": 4.833333333333333
+  },
+  "cases": [
+    {
+      "result": {
+        "case_id": "hybrid-payment-pool-01",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "40c50a1b-ae61-4c7a-a183-562daf0be5d5",
+            0
+          ],
+          [
+            "cff4d1a6-9ea2-43f8-b3da-cf44f44f6130",
+            0
+          ],
+          [
+            "07a94b00-36de-46fa-af72-de4034fae900",
+            0
+          ],
+          [
+            "36e50a3c-4f7d-4aca-be58-bfbe1863e482",
+            1
+          ],
+          [
+            "441da168-edb6-4f75-b232-b95f0522a60e",
+            0
+          ]
+        ],
+        "context": "1. Title: Payment Service DB Connection Pool Troubleshooting, content: # Payment Service DB Connection Pool Troubleshooting\n\n## Symptoms\n- Timeout errors in payment-service logs: \"connection pool exhausted\"\n- PostgreSQL logs showing \"FATAL: remaining connection slots are reserved\"\n- Elevated 503 error rate on /api/v1/checkout and /api/v1/payments endpoints\n- pg_stat_activity shows connections near max_connections limit\n\n## Diagnosis\n\n### Step 1: Check current connection count\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'payments'\"\n```\n\n### Step 2: Identify long-running queries holding connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE datname = 'payments' AND state != 'idle' ORDER BY duration DESC LIMIT 10\"\n```\n\n### Step 3: Check application pool configuration\n```bash\nkubectl exec -it deployment/payment-service -- cat /app/config/db.yaml | grep pool\n```\n\nExpected: pool_size=20, max_overflow=10, pool_timeout=30\n\n## Resolution\n### Immediate: Kill idle connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'payments' AND state = 'idle' AND query_start < now() - interval '5 minutes'\"\n```\n\n### Short-term: Restart pods to reset connection pools\n```bash\nkubectl rollout restart deployment/payment-service -n production\n```\n\n### Long-term: Tune pool settings\nIf recurring, increase pool_size in deployment config and consider PgBouncer for connection pooling at the infrastructure level.\n\n## Escalation\n- If connections do not drop after pod restart: page DBA team\n- If PostgreSQL itself is unresponsive: see Database Failover Runbook\n\n2. Title: Database Connection Pool Sizing Guide, content: # Database Connection Pool Sizing Guide\n\n## Purpose\nHow to choose connection pool settings for services that talk to PostgreSQL.\nThis is a design-time guide \u2014 for diagnosing an active pool-exhaustion\nincident, see the Payment Service DB Connection Pool Troubleshooting runbook.\n\n## Sizing rules\n- Start from measured load: pool_size \u2248 peak requests per second \u00d7 average\n  query duration in seconds, rounded up. Do not guess.\n- Set max_overflow to 25\u201350% of pool_size to absorb short bursts.\n- pool_timeout controls how long a request waits for a free connection\n  before failing; keep it below your upstream request timeout.\n- The sum of pool_size + max_overflow across ALL replicas must stay under\n  PostgreSQL max_connections, with ~20% headroom reserved for admin\n  sessions and migrations.\n\n## Worked example\npayment-service at 300 rps peak with 40 ms average query time keeps ~12\nconnections busy. pool_size=20, max_overflow=10 covers bursts while three\nreplicas stay within a max_connections of 120.\n\n## When to revisit\nRe-run the sizing math after adding replicas, when query latency grows, or\nwhen total demand approaches max_connections \u2014 at that point consider\nPgBouncer instead of ever-larger pools.\n\n3. Title: Payment Service Database FAQ, content: # Payment Service Database FAQ\n\n## Who owns the payments database?\nThe payments platform team owns the schema and capacity planning.\nDay-to-day questions go to the #payments-db channel.\n\n## How do I get read access?\nRequest a read-only role through the access portal. Direct superuser\naccess is never granted; analysts should use the reporting replica.\n\n## I occasionally see timeout errors in my logs. Is that an incident?\nShort blips during deploys are normal \u2014 pods reconnect within seconds.\nSustained \"connection pool exhausted\" errors or a rising 503 rate on\ncheckout IS an incident: follow the Payment Service DB Connection Pool\nTroubleshooting runbook.\n\n## Are idle connections cleaned up automatically?\nYes. Connections idle for more than 5 minutes are terminated by a\nscheduled job, so a leaked session cannot hold a connection slot forever.\n\n## How do I request a schema change?\nOpen a migration PR against the payments repo. The platform team reviews\nit and applies it during a maintenance window.\n\n## The database itself seems down. Who do I page?\nPage the DBA on-call. Attach recent pg_stat_activity output if you can\nstill get it.\n\n4. Title: API Gateway Rate Limit Configuration, content: /CD pipeline to reject rate limit configs below tier minimums\n- Add integration test that verifies each tier gets correct rate limit headers\n- Set up alerting when enterprise customers hit 429 errors\n\n## Escalation\n- If rate limits cannot be updated via config: page api-gateway team lead\n- If Redis is unresponsive: see Redis Cluster Troubleshooting Runbook\n\n5. Title: Auth Service Memory Troubleshooting, content: # Auth Service Memory Troubleshooting\n\n## Symptoms\n- Kubernetes pods restarting with reason \"OOMKilled\" and exit code 137\n- Container memory usage growing linearly over time without stabilizing\n- Increased login failures and 502 errors during pod restarts\n- Grafana memory dashboard showing sawtooth pattern (gradual rise, sudden drop)\n\n## Diagnosis\n\n### Step 1: Check pod restart history and OOM events\n```bash\nkubectl get pods -n production -l app=auth-service -o wide\nkubectl describe pod <pod-name> -n production | grep -A 5 \"Last State\"\n```\n\n### Step 2: Monitor real-time memory usage\n```bash\nkubectl top pods -n production -l app=auth-service\n```\n\nRun this every 30 seconds to observe the growth pattern.\n\n### Step 3: Capture heap dump before OOM\n```bash\nkubectl exec -it <pod-name> -n production -- jmap -dump:format=b,file=/tmp/heap.hprof 1\nkubectl cp production/<pod-name>:/tmp/heap.hprof ./heap.hprof\n```\n\n### Step 4: Check JVM or runtime memory settings\n```bash\nkubectl exec -it <pod-name> -n production -- env | grep -i memory\nkubectl get deployment auth-service -n production -o jsonpath='{.spec.template.spec.containers[0].resources}'\n```\n\n## Resolution\n\n### Immediate: Increase memory limit to buy time\n```bash\nkubectl set resources deployment/auth-service -n production --limits=memory=1Gi\n```\n\n### Short-term: Restart pods on a schedule to prevent OOM\n```bash\nkubectl rollout restart deployment/auth-service -n production\n```\n\n### Long-term: Fix the memory leak\nReview session cache eviction policy \u2014 ensure expired JWT tokens are removed\nAdd TTL-based eviction to in-memory cache\nConsider moving session cache to Redis instead of in-process memory\n\n## Escalation\n- If heap dump shows leak outside application code: page platform engineering team\n- If login success rate drops below 50%: escalate to P1\n",
+        "answer": "If you are experiencing a \"connection pool exhausted\" issue with the payment service, follow these troubleshooting steps:\n\n### Symptoms\n- Timeout errors in payment-service logs: \"connection pool exhausted\"\n- PostgreSQL logs showing \"FATAL: remaining connection slots are reserved\"\n- Elevated 503 error rate on /api/v1/checkout and /api/v1/payments endpoints\n- `pg_stat_activity` shows connections near the `max_connections` limit.\n\n### Diagnosis Steps\n1. **Check current connection count**:\n   ```bash\n   psql -h payment-db.internal -U admin -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'payments'\"\n   ```\n\n2. **Identify long-running queries holding connections**:\n   ```bash\n   psql -h payment-db.internal -U admin -c \"SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE datname = 'payments' AND state != 'idle' ORDER BY duration DESC LIMIT 10\"\n   ```\n\n3. **Check application pool configuration**:\n   ```bash\n   kubectl exec -it deployment/payment-service -- cat /app/config/db.yaml | grep pool\n   ```\n   Expected values: `pool_size=20`, `max_overflow=10`, `pool_timeout=30`.\n\n### Resolution Steps\n- **Immediate**: Kill idle connections:\n   ```bash\n   psql -h payment-db.internal -U admin -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'payments' AND state = 'idle' AND query_start < now() - interval '5 minutes'\"\n   ```\n\n- **Short-term**: Restart pods to reset connection pools:\n   ```bash\n   kubectl rollout restart deployment/payment-service -n production\n   ```\n\n- **Long-term**: Tune pool settings. If this issue recurs, consider increasing `pool_size` in the deployment config and think about using PgBouncer for connection pooling at the infrastructure level.\n\n### Escalation\n- If connections do not drop after pod restart, page the DBA team.\n- If PostgreSQL itself is unresponsive, refer to the Database Failover Runbook. \n\nMake sure to monitor the situation closely after applying these steps."
+      },
+      "score": {
+        "case_id": "hybrid-payment-pool-01",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-payment-pool-01",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately reflects the retrieved context, including the symptoms, diagnosis steps, and resolution steps for the 'connection pool exhausted' issue. It is also fully relevant, as it directly addresses the question by providing a complete troubleshooting guide, covering all key actions mentioned in the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-payment-checkout503-02",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "40c50a1b-ae61-4c7a-a183-562daf0be5d5",
+            0
+          ],
+          [
+            "07a94b00-36de-46fa-af72-de4034fae900",
+            0
+          ],
+          [
+            "36e50a3c-4f7d-4aca-be58-bfbe1863e482",
+            1
+          ],
+          [
+            "36e50a3c-4f7d-4aca-be58-bfbe1863e482",
+            0
+          ],
+          [
+            "4e3841eb-7f23-40e0-ac7a-47290f83acd2",
+            0
+          ]
+        ],
+        "context": "1. Title: Payment Service DB Connection Pool Troubleshooting, content: # Payment Service DB Connection Pool Troubleshooting\n\n## Symptoms\n- Timeout errors in payment-service logs: \"connection pool exhausted\"\n- PostgreSQL logs showing \"FATAL: remaining connection slots are reserved\"\n- Elevated 503 error rate on /api/v1/checkout and /api/v1/payments endpoints\n- pg_stat_activity shows connections near max_connections limit\n\n## Diagnosis\n\n### Step 1: Check current connection count\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'payments'\"\n```\n\n### Step 2: Identify long-running queries holding connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE datname = 'payments' AND state != 'idle' ORDER BY duration DESC LIMIT 10\"\n```\n\n### Step 3: Check application pool configuration\n```bash\nkubectl exec -it deployment/payment-service -- cat /app/config/db.yaml | grep pool\n```\n\nExpected: pool_size=20, max_overflow=10, pool_timeout=30\n\n## Resolution\n### Immediate: Kill idle connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'payments' AND state = 'idle' AND query_start < now() - interval '5 minutes'\"\n```\n\n### Short-term: Restart pods to reset connection pools\n```bash\nkubectl rollout restart deployment/payment-service -n production\n```\n\n### Long-term: Tune pool settings\nIf recurring, increase pool_size in deployment config and consider PgBouncer for connection pooling at the infrastructure level.\n\n## Escalation\n- If connections do not drop after pod restart: page DBA team\n- If PostgreSQL itself is unresponsive: see Database Failover Runbook\n\n2. Title: Payment Service Database FAQ, content: # Payment Service Database FAQ\n\n## Who owns the payments database?\nThe payments platform team owns the schema and capacity planning.\nDay-to-day questions go to the #payments-db channel.\n\n## How do I get read access?\nRequest a read-only role through the access portal. Direct superuser\naccess is never granted; analysts should use the reporting replica.\n\n## I occasionally see timeout errors in my logs. Is that an incident?\nShort blips during deploys are normal \u2014 pods reconnect within seconds.\nSustained \"connection pool exhausted\" errors or a rising 503 rate on\ncheckout IS an incident: follow the Payment Service DB Connection Pool\nTroubleshooting runbook.\n\n## Are idle connections cleaned up automatically?\nYes. Connections idle for more than 5 minutes are terminated by a\nscheduled job, so a leaked session cannot hold a connection slot forever.\n\n## How do I request a schema change?\nOpen a migration PR against the payments repo. The platform team reviews\nit and applies it during a maintenance window.\n\n## The database itself seems down. Who do I page?\nPage the DBA on-call. Attach recent pg_stat_activity output if you can\nstill get it.\n\n3. Title: API Gateway Rate Limit Configuration, content: /CD pipeline to reject rate limit configs below tier minimums\n- Add integration test that verifies each tier gets correct rate limit headers\n- Set up alerting when enterprise customers hit 429 errors\n\n## Escalation\n- If rate limits cannot be updated via config: page api-gateway team lead\n- If Redis is unresponsive: see Redis Cluster Troubleshooting Runbook\n\n4. Title: API Gateway Rate Limit Configuration, content: # API Gateway Rate Limit Configuration\n\n## Symptoms\n- Customers receiving HTTP 429 Too Many Requests errors\n- Response headers showing incorrect X-RateLimit-Limit values\n- Rate limiter Redis keys showing wrong thresholds per API key\n- Customer complaints about requests being throttled below their plan tier\n\n## Diagnosis\n\n### Step 1: Check current rate limit configuration\n```bash\nkubectl exec -it deployment/api-gateway -n production -- cat /app/config/rate-limits.yaml\n```\n\nVerify tier limits match expected values:\n- Free: 50 req/s\n- Pro: 200 req/s\n- Enterprise: 500 req/s\n\n### Step 2: Check rate limit counters in Redis\n```bash\nredis-cli -h redis.internal -n 2 GET \"rate_limit:apikey:<customer-api-key>\"\nredis-cli -h redis.internal -n 2 TTL \"rate_limit:apikey:<customer-api-key>\"\n```\n\n### Step 3: Verify customer tier mapping\n```bash\ncurl -s http://api-gateway.internal:8080/admin/api-keys/<key> | jq '.tier'\n```\n\n### Step 4: Check recent config deployments\n```bash\nkubectl rollout history deployment/api-gateway -n production\ngit log --oneline -10 -- config/rate-limits.yaml\n```\n\n## Resolution\n\n### Immediate: Update rate limit config with correct tier values\n```bash\nkubectl edit configmap api-gateway-config -n production\n```\n\n###Set correct values per tier, then restart:\n```bash\nkubectl rollout restart deployment/api-gateway -n production\n```\n\n### Clear stale rate limit counters in Redis\n```bash\nredis-cli -h redis.internal -n 2 KEYS \"rate_limit:*\" | xargs redis-cli -h redis.internal -n 2 DEL\n```\n\n### Verify fix: Test with affected customer's API key\n```bash\nfor i in $(seq 1 10); do curl -s -o /dev/null -w \"%{http_code}\" -H \"X-API-Key: <key>\" https://api.company.com/v1/health; echo; done\n```\nAll responses should be 200, not 429.\n\n## Prevent recurrence\n- Add config validation in CI/CD pipeline to reject rate limit configs below tier minimums\n- Add integration test that verifies each tier gets correct rate limit headers\n- Set up alerting when enterprise customers hit 429 errors\n\n## Escalation\n- If rate limits cannot\n5. Title: API Rate Limit FAQ, content: # API Rate Limit FAQ\n\n## Why am I getting 429 Too Many Requests?\nYour API key exceeded its tier's request limit. Check the Retry-After\nheader and back off before retrying. If you believe the volume is\nlegitimate and within your tier, this may be a gateway misconfiguration \u2014\nreport it so the API Gateway Rate Limit Configuration runbook can be\napplied.\n\n## What is my current limit?\nLimits are set per tier (free, standard, enterprise) \u2014 see the API Rate\nLimit Tier Policy. Your current tier is shown in the developer portal\nunder your API key settings.\n\n## How do I request a higher limit?\nContact your account manager to start a tier upgrade. Capacity review\nusually takes two business days. Do not create additional API keys to\nwork around limits \u2014 keys are per client, and abuse triggers suspension.\n\n## Do retries count against my limit?\nYes. Every request that reaches the gateway counts, including retries\nand failed requests. Use exponential backoff to avoid burning your\nburst allowance.\n\n## Are limits shared across environments?\nNo. Sandbox keys have separate, lower limits and are not suitable for\nload testing.\n",
+        "answer": "You should follow the Payment Service DB Connection Pool Troubleshooting runbook. Here are the steps you can take:\n\n1. **Check current connection count**:\n   ```bash\n   psql -h payment-db.internal -U admin -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'payments'\"\n   ```\n\n2. **Identify long-running queries holding connections**:\n   ```bash\n   psql -h payment-db.internal -U admin -c \"SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE datname = 'payments' AND state != 'idle' ORDER BY duration DESC LIMIT 10\"\n   ```\n\n3. **Check application pool configuration**:\n   ```bash\n   kubectl exec -it deployment/payment-service -- cat /app/config/db.yaml | grep pool\n   ```\n   Ensure that the expected values are `pool_size=20`, `max_overflow=10`, and `pool_timeout=30`.\n\n4. **Immediate action**: Kill idle connections to free up slots:\n   ```bash\n   psql -h payment-db.internal -U admin -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'payments' AND state = 'idle' AND query_start < now() - interval '5 minutes'\"\n   ```\n\n5. **Short-term action**: Restart the payment service pods to reset connection pools:\n   ```bash\n   kubectl rollout restart deployment/payment-service -n production\n   ```\n\n6. **Long-term action**: If the issue recurs, consider increasing the `pool_size` in the deployment config and think about using PgBouncer for connection pooling at the infrastructure level.\n\nIf connections do not drop after the pod restart, you should page the DBA team. If PostgreSQL itself is unresponsive, refer to the Database Failover Runbook."
+      },
+      "score": {
+        "case_id": "hybrid-payment-checkout503-02",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-payment-checkout503-02",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately follows the steps and recommendations from the retrieved context, including checking connection counts, killing idle connections, restarting pods, and considering PgBouncer. It is also fully relevant, as it directly addresses the question by providing a complete set of actions to resolve the connection pool exhaustion issue, matching the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-payment-sizing-03",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "cff4d1a6-9ea2-43f8-b3da-cf44f44f6130",
+            0
+          ],
+          [
+            "40c50a1b-ae61-4c7a-a183-562daf0be5d5",
+            0
+          ]
+        ],
+        "context": "1. Title: Database Connection Pool Sizing Guide, content: # Database Connection Pool Sizing Guide\n\n## Purpose\nHow to choose connection pool settings for services that talk to PostgreSQL.\nThis is a design-time guide \u2014 for diagnosing an active pool-exhaustion\nincident, see the Payment Service DB Connection Pool Troubleshooting runbook.\n\n## Sizing rules\n- Start from measured load: pool_size \u2248 peak requests per second \u00d7 average\n  query duration in seconds, rounded up. Do not guess.\n- Set max_overflow to 25\u201350% of pool_size to absorb short bursts.\n- pool_timeout controls how long a request waits for a free connection\n  before failing; keep it below your upstream request timeout.\n- The sum of pool_size + max_overflow across ALL replicas must stay under\n  PostgreSQL max_connections, with ~20% headroom reserved for admin\n  sessions and migrations.\n\n## Worked example\npayment-service at 300 rps peak with 40 ms average query time keeps ~12\nconnections busy. pool_size=20, max_overflow=10 covers bursts while three\nreplicas stay within a max_connections of 120.\n\n## When to revisit\nRe-run the sizing math after adding replicas, when query latency grows, or\nwhen total demand approaches max_connections \u2014 at that point consider\nPgBouncer instead of ever-larger pools.\n\n2. Title: Payment Service DB Connection Pool Troubleshooting, content: # Payment Service DB Connection Pool Troubleshooting\n\n## Symptoms\n- Timeout errors in payment-service logs: \"connection pool exhausted\"\n- PostgreSQL logs showing \"FATAL: remaining connection slots are reserved\"\n- Elevated 503 error rate on /api/v1/checkout and /api/v1/payments endpoints\n- pg_stat_activity shows connections near max_connections limit\n\n## Diagnosis\n\n### Step 1: Check current connection count\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'payments'\"\n```\n\n### Step 2: Identify long-running queries holding connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE datname = 'payments' AND state != 'idle' ORDER BY duration DESC LIMIT 10\"\n```\n\n### Step 3: Check application pool configuration\n```bash\nkubectl exec -it deployment/payment-service -- cat /app/config/db.yaml | grep pool\n```\n\nExpected: pool_size=20, max_overflow=10, pool_timeout=30\n\n## Resolution\n### Immediate: Kill idle connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'payments' AND state = 'idle' AND query_start < now() - interval '5 minutes'\"\n```\n\n### Short-term: Restart pods to reset connection pools\n```bash\nkubectl rollout restart deployment/payment-service -n production\n```\n\n### Long-term: Tune pool settings\nIf recurring, increase pool_size in deployment config and consider PgBouncer for connection pooling at the infrastructure level.\n\n## Escalation\n- If connections do not drop after pod restart: page DBA team\n- If PostgreSQL itself is unresponsive: see Database Failover Runbook\n",
+        "answer": "To choose the connection pool size for a new service that talks to PostgreSQL, follow these guidelines:\n\n1. **Start from measured load**: Calculate the pool size using the formula: \n   \\[\n   \\text{pool\\_size} \\approx \\text{peak requests per second} \\times \\text{average query duration in seconds}, \\text{ rounded up.}\n   \\]\n   Avoid guessing the values.\n\n2. **Set max_overflow**: Configure the max_overflow to be 25\u201350% of the pool_size to handle short bursts of traffic.\n\n3. **Configure pool_timeout**: This setting controls how long a request waits for a free connection before failing. Ensure it is set below your upstream request timeout.\n\n4. **Consider total connections**: The sum of pool_size and max_overflow across all replicas must remain under PostgreSQL's max_connections limit, with approximately 20% reserved for admin sessions and migrations.\n\n5. **Revisit sizing**: Re-evaluate the sizing after adding replicas, if query latency increases, or when total demand approaches max_connections. At that point, consider using PgBouncer instead of increasing pool sizes further [1]."
+      },
+      "score": {
+        "case_id": "hybrid-payment-sizing-03",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-payment-sizing-03",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately reflects the retrieved context, including the formula for pool size, the percentage for max_overflow, and the consideration of total connections under PostgreSQL's max_connections. It is also fully relevant, as it directly addresses the question by providing a complete guide on choosing the connection pool size, covering all key points from the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-gateway-429-04",
+        "predicted_route": "clarify",
+        "actual_route": "clarify",
+        "retrieved": [],
+        "context": "Could you provide more details about the issue? Are you looking for a count of tickets related to this error, a list of affected customers, or documentation on how to resolve it?",
+        "answer": "The context does not contain enough information to address the issue of customers receiving a \"429 too many requests\" error related to the wrong tier. Please provide more details about the issue, such as whether you need a count of tickets, a list of affected customers, or documentation on how to resolve it."
+      },
+      "score": {
+        "case_id": "hybrid-gateway-429-04",
+        "route_ok": false,
+        "route_diverged": false,
+        "recall": 0.0,
+        "precision": 0.0,
+        "rr": 0.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-gateway-429-04",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately reflects the lack of specific information in the retrieved context. It is also relevant because it correctly identifies that the context does not provide the necessary details to resolve the issue, aligning with the reference answer's focus on configuration and rate limits."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-gateway-throttle-05",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "36e50a3c-4f7d-4aca-be58-bfbe1863e482",
+            0
+          ],
+          [
+            "36e50a3c-4f7d-4aca-be58-bfbe1863e482",
+            1
+          ],
+          [
+            "cfb948c5-9e7e-42a3-be43-a594b5d17f40",
+            0
+          ],
+          [
+            "4e3841eb-7f23-40e0-ac7a-47290f83acd2",
+            0
+          ],
+          [
+            "1037007a-2830-4e92-a8f2-876b29120290",
+            0
+          ]
+        ],
+        "context": "1. Title: API Gateway Rate Limit Configuration, content: # API Gateway Rate Limit Configuration\n\n## Symptoms\n- Customers receiving HTTP 429 Too Many Requests errors\n- Response headers showing incorrect X-RateLimit-Limit values\n- Rate limiter Redis keys showing wrong thresholds per API key\n- Customer complaints about requests being throttled below their plan tier\n\n## Diagnosis\n\n### Step 1: Check current rate limit configuration\n```bash\nkubectl exec -it deployment/api-gateway -n production -- cat /app/config/rate-limits.yaml\n```\n\nVerify tier limits match expected values:\n- Free: 50 req/s\n- Pro: 200 req/s\n- Enterprise: 500 req/s\n\n### Step 2: Check rate limit counters in Redis\n```bash\nredis-cli -h redis.internal -n 2 GET \"rate_limit:apikey:<customer-api-key>\"\nredis-cli -h redis.internal -n 2 TTL \"rate_limit:apikey:<customer-api-key>\"\n```\n\n### Step 3: Verify customer tier mapping\n```bash\ncurl -s http://api-gateway.internal:8080/admin/api-keys/<key> | jq '.tier'\n```\n\n### Step 4: Check recent config deployments\n```bash\nkubectl rollout history deployment/api-gateway -n production\ngit log --oneline -10 -- config/rate-limits.yaml\n```\n\n## Resolution\n\n### Immediate: Update rate limit config with correct tier values\n```bash\nkubectl edit configmap api-gateway-config -n production\n```\n\n###Set correct values per tier, then restart:\n```bash\nkubectl rollout restart deployment/api-gateway -n production\n```\n\n### Clear stale rate limit counters in Redis\n```bash\nredis-cli -h redis.internal -n 2 KEYS \"rate_limit:*\" | xargs redis-cli -h redis.internal -n 2 DEL\n```\n\n### Verify fix: Test with affected customer's API key\n```bash\nfor i in $(seq 1 10); do curl -s -o /dev/null -w \"%{http_code}\" -H \"X-API-Key: <key>\" https://api.company.com/v1/health; echo; done\n```\nAll responses should be 200, not 429.\n\n## Prevent recurrence\n- Add config validation in CI/CD pipeline to reject rate limit configs below tier minimums\n- Add integration test that verifies each tier gets correct rate limit headers\n- Set up alerting when enterprise customers hit 429 errors\n\n## Escalation\n- If rate limits cannot\n2. Title: API Gateway Rate Limit Configuration, content: /CD pipeline to reject rate limit configs below tier minimums\n- Add integration test that verifies each tier gets correct rate limit headers\n- Set up alerting when enterprise customers hit 429 errors\n\n## Escalation\n- If rate limits cannot be updated via config: page api-gateway team lead\n- If Redis is unresponsive: see Redis Cluster Troubleshooting Runbook\n\n3. Title: API Rate Limit Tier Policy, content: # API Rate Limit Tier Policy\n\n## Purpose\nDefines which request limits apply to which API clients. This is the\npolicy of record \u2014 for diagnosing legitimate requests being rejected\nwith 429 errors, see the API Gateway Rate Limit Configuration runbook.\n\n## Tiers\n- Free tier: 60 requests per minute, burst up to 100. No SLA.\n- Standard tier: 600 requests per minute, burst up to 1,000.\n- Enterprise tier: negotiated per contract; floor of 6,000 requests\n  per minute with dedicated gateway capacity.\n\n## Enforcement\nLimits are enforced per API key using a sliding-window counter at the\ngateway. Exceeding the window returns HTTP 429 with a Retry-After\nheader. Repeated abuse (10x the tier limit) triggers a temporary key\nsuspension and a notification to the account owner.\n\n## Changing a client's tier\nTier assignment is owned by the client's account manager. Upgrades\nrequire a capacity review by the platform team before the new limit is\napplied at the gateway. Emergency limit raises during an incident must\nbe reverted or formalized within five business days.\n\n## Review\nThis policy is reviewed quarterly against gateway capacity reports.\n\n4. Title: API Rate Limit FAQ, content: # API Rate Limit FAQ\n\n## Why am I getting 429 Too Many Requests?\nYour API key exceeded its tier's request limit. Check the Retry-After\nheader and back off before retrying. If you believe the volume is\nlegitimate and within your tier, this may be a gateway misconfiguration \u2014\nreport it so the API Gateway Rate Limit Configuration runbook can be\napplied.\n\n## What is my current limit?\nLimits are set per tier (free, standard, enterprise) \u2014 see the API Rate\nLimit Tier Policy. Your current tier is shown in the developer portal\nunder your API key settings.\n\n## How do I request a higher limit?\nContact your account manager to start a tier upgrade. Capacity review\nusually takes two business days. Do not create additional API keys to\nwork around limits \u2014 keys are per client, and abuse triggers suspension.\n\n## Do retries count against my limit?\nYes. Every request that reaches the gateway counts, including retries\nand failed requests. Use exponential backoff to avoid burning your\nburst allowance.\n\n## Are limits shared across environments?\nNo. Sandbox keys have separate, lower limits and are not suitable for\nload testing.\n\n5. Title: VPN Access FAQ, content: # VPN Access FAQ\n\n## I can't connect to the VPN. Is it broken?\nCheck the status page first. If only YOU are affected, it is almost\nalways local: wrong password, expired MFA enrollment, or a stale\nclient. If EVERYONE is failing to connect at once, that is an incident\n\u2014 typically an expired gateway certificate; see the VPN Certificate\nRenewal Runbook.\n\n## The VPN was just fixed but I still can't connect.\nYour client may have cached the old certificate. Restart the VPN\nclient to clear its cache before reporting a problem.\n\n## Why was I disconnected after 8 hours?\nSession lifetime is capped at 8 hours by policy. Reconnect and you\nwill get a fresh session.\n\n## How do I set up the VPN on a new laptop?\nInstall the client from the self-service portal and enroll the device\nin MFA. Certificates are provisioned automatically at first login \u2014\nyou never need to install one manually.\n\n## Which traffic goes through the VPN?\nSplit tunneling is enabled: only internal ranges route through the\ngateway. Streaming and general browsing use your normal connection,\nso do not report slow YouTube as a VPN incident.\n",
+        "answer": "To fix the gateway configuration for enterprise customers being throttled, follow these steps:\n\n1. **Check the current rate limit configuration** to ensure the tier limits match the expected values:\n   - Enterprise: 500 req/s\n   Use the following command:\n   ```bash\n   kubectl exec -it deployment/api-gateway -n production -- cat /app/config/rate-limits.yaml\n   ```\n\n2. **Update the rate limit configuration** with the correct tier values:\n   ```bash\n   kubectl edit configmap api-gateway-config -n production\n   ```\n\n3. **Restart the API gateway deployment** to apply the changes:\n   ```bash\n   kubectl rollout restart deployment/api-gateway -n production\n   ```\n\n4. **Clear stale rate limit counters in Redis** to ensure no old limits are affecting the current configuration:\n   ```bash\n   redis-cli -h redis.internal -n 2 KEYS \"rate_limit:*\" | xargs redis-cli -h redis.internal -n 2 DEL\n   ```\n\n5. **Verify the fix** by testing with the affected customer's API key:\n   ```bash\n   for i in $(seq 1 10); do curl -s -o /dev/null -w \"%{http_code}\" -H \"X-API-Key: <key>\" https://api.company.com/v1/health; echo; done\n   ```\n   All responses should be 200, not 429.\n\nMake sure to also check the customer tier mapping to confirm they are assigned to the correct tier:\n```bash\ncurl -s http://api-gateway.internal:8080/admin/api-keys/<key> | jq '.tier'\n```\n\nIf the issue persists after these steps, consider escalating the issue to the API gateway team lead or checking Redis responsiveness as per the escalation guidelines."
+      },
+      "score": {
+        "case_id": "hybrid-gateway-throttle-05",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.4,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-gateway-throttle-05",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately follows the steps outlined in the retrieved context for fixing the gateway configuration, including checking and updating the rate limit configuration, restarting the gateway, clearing Redis counters, and verifying the fix. It is also fully relevant, as it directly addresses the question by covering all necessary actions to resolve the throttling issue for enterprise customers, matching the reference answer's key actions."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-gateway-tierlimits-06",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "cfb948c5-9e7e-42a3-be43-a594b5d17f40",
+            0
+          ],
+          [
+            "4e3841eb-7f23-40e0-ac7a-47290f83acd2",
+            0
+          ],
+          [
+            "36e50a3c-4f7d-4aca-be58-bfbe1863e482",
+            0
+          ],
+          [
+            "36e50a3c-4f7d-4aca-be58-bfbe1863e482",
+            1
+          ],
+          [
+            "36321208-1887-460c-8458-4c31a0b7c7d9",
+            0
+          ]
+        ],
+        "context": "1. Title: API Rate Limit Tier Policy, content: # API Rate Limit Tier Policy\n\n## Purpose\nDefines which request limits apply to which API clients. This is the\npolicy of record \u2014 for diagnosing legitimate requests being rejected\nwith 429 errors, see the API Gateway Rate Limit Configuration runbook.\n\n## Tiers\n- Free tier: 60 requests per minute, burst up to 100. No SLA.\n- Standard tier: 600 requests per minute, burst up to 1,000.\n- Enterprise tier: negotiated per contract; floor of 6,000 requests\n  per minute with dedicated gateway capacity.\n\n## Enforcement\nLimits are enforced per API key using a sliding-window counter at the\ngateway. Exceeding the window returns HTTP 429 with a Retry-After\nheader. Repeated abuse (10x the tier limit) triggers a temporary key\nsuspension and a notification to the account owner.\n\n## Changing a client's tier\nTier assignment is owned by the client's account manager. Upgrades\nrequire a capacity review by the platform team before the new limit is\napplied at the gateway. Emergency limit raises during an incident must\nbe reverted or formalized within five business days.\n\n## Review\nThis policy is reviewed quarterly against gateway capacity reports.\n\n2. Title: API Rate Limit FAQ, content: # API Rate Limit FAQ\n\n## Why am I getting 429 Too Many Requests?\nYour API key exceeded its tier's request limit. Check the Retry-After\nheader and back off before retrying. If you believe the volume is\nlegitimate and within your tier, this may be a gateway misconfiguration \u2014\nreport it so the API Gateway Rate Limit Configuration runbook can be\napplied.\n\n## What is my current limit?\nLimits are set per tier (free, standard, enterprise) \u2014 see the API Rate\nLimit Tier Policy. Your current tier is shown in the developer portal\nunder your API key settings.\n\n## How do I request a higher limit?\nContact your account manager to start a tier upgrade. Capacity review\nusually takes two business days. Do not create additional API keys to\nwork around limits \u2014 keys are per client, and abuse triggers suspension.\n\n## Do retries count against my limit?\nYes. Every request that reaches the gateway counts, including retries\nand failed requests. Use exponential backoff to avoid burning your\nburst allowance.\n\n## Are limits shared across environments?\nNo. Sandbox keys have separate, lower limits and are not suitable for\nload testing.\n\n3. Title: API Gateway Rate Limit Configuration, content: # API Gateway Rate Limit Configuration\n\n## Symptoms\n- Customers receiving HTTP 429 Too Many Requests errors\n- Response headers showing incorrect X-RateLimit-Limit values\n- Rate limiter Redis keys showing wrong thresholds per API key\n- Customer complaints about requests being throttled below their plan tier\n\n## Diagnosis\n\n### Step 1: Check current rate limit configuration\n```bash\nkubectl exec -it deployment/api-gateway -n production -- cat /app/config/rate-limits.yaml\n```\n\nVerify tier limits match expected values:\n- Free: 50 req/s\n- Pro: 200 req/s\n- Enterprise: 500 req/s\n\n### Step 2: Check rate limit counters in Redis\n```bash\nredis-cli -h redis.internal -n 2 GET \"rate_limit:apikey:<customer-api-key>\"\nredis-cli -h redis.internal -n 2 TTL \"rate_limit:apikey:<customer-api-key>\"\n```\n\n### Step 3: Verify customer tier mapping\n```bash\ncurl -s http://api-gateway.internal:8080/admin/api-keys/<key> | jq '.tier'\n```\n\n### Step 4: Check recent config deployments\n```bash\nkubectl rollout history deployment/api-gateway -n production\ngit log --oneline -10 -- config/rate-limits.yaml\n```\n\n## Resolution\n\n### Immediate: Update rate limit config with correct tier values\n```bash\nkubectl edit configmap api-gateway-config -n production\n```\n\n###Set correct values per tier, then restart:\n```bash\nkubectl rollout restart deployment/api-gateway -n production\n```\n\n### Clear stale rate limit counters in Redis\n```bash\nredis-cli -h redis.internal -n 2 KEYS \"rate_limit:*\" | xargs redis-cli -h redis.internal -n 2 DEL\n```\n\n### Verify fix: Test with affected customer's API key\n```bash\nfor i in $(seq 1 10); do curl -s -o /dev/null -w \"%{http_code}\" -H \"X-API-Key: <key>\" https://api.company.com/v1/health; echo; done\n```\nAll responses should be 200, not 429.\n\n## Prevent recurrence\n- Add config validation in CI/CD pipeline to reject rate limit configs below tier minimums\n- Add integration test that verifies each tier gets correct rate limit headers\n- Set up alerting when enterprise customers hit 429 errors\n\n## Escalation\n- If rate limits cannot\n4. Title: API Gateway Rate Limit Configuration, content: /CD pipeline to reject rate limit configs below tier minimums\n- Add integration test that verifies each tier gets correct rate limit headers\n- Set up alerting when enterprise customers hit 429 errors\n\n## Escalation\n- If rate limits cannot be updated via config: page api-gateway team lead\n- If Redis is unresponsive: see Redis Cluster Troubleshooting Runbook\n\n5. Title: Service Resource Limits Policy, content: # Service Resource Limits Policy\n\n## Purpose\nRules for setting container CPU and memory limits on production\nservices. This is the policy of record \u2014 for pods that are actively\nOOMKilled, see the Auth Service Memory Troubleshooting runbook.\n\n## Memory rules\n- Every production container MUST declare both a memory request and a\n  memory limit. Unbounded containers are rejected at deploy time.\n- The memory limit must be at least 25% above observed steady-state\n  usage, measured over one week of production traffic.\n- For JVM services, the heap must be capped at 75% of the container\n  limit \u2014 metaspace, threads, and off-heap buffers need the rest.\n\n## CPU rules\n- CPU requests reflect steady-state usage; CPU limits are discouraged\n  (throttling hurts latency more than contention does).\n\n## Raising a limit\nA limit increase requires a capacity ticket with a heap analysis\nattached \u2014 see the Memory Profiling Guide for how to produce one.\nRaising a limit to silence OOMKilled restarts without a leak analysis\nis explicitly forbidden: it postpones the incident, it does not fix it.\n\n## Review\nLimits are re-baselined quarterly from resource usage reports.\n",
+        "answer": "The request-per-minute limits for each API tier are as follows:\n\n- Free tier: 60 requests per minute, burst up to 100.\n- Standard tier: 600 requests per minute, burst up to 1,000.\n- Enterprise tier: negotiated per contract; floor of 6,000 requests per minute with dedicated gateway capacity [1]."
+      },
+      "score": {
+        "case_id": "hybrid-gateway-tierlimits-06",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-gateway-tierlimits-06",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer accurately reflects the retrieved context, stating the request-per-minute limits for each API tier: Free, Standard, and Enterprise. It includes all necessary details such as burst limits and the negotiated floor for the Enterprise tier, matching the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-auth-oom-07",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "441da168-edb6-4f75-b232-b95f0522a60e",
+            0
+          ],
+          [
+            "36321208-1887-460c-8458-4c31a0b7c7d9",
+            0
+          ],
+          [
+            "9ca667b5-045b-47e6-834a-9e8e0c5beb39",
+            0
+          ],
+          [
+            "40c50a1b-ae61-4c7a-a183-562daf0be5d5",
+            0
+          ],
+          [
+            "36e50a3c-4f7d-4aca-be58-bfbe1863e482",
+            1
+          ]
+        ],
+        "context": "1. Title: Auth Service Memory Troubleshooting, content: # Auth Service Memory Troubleshooting\n\n## Symptoms\n- Kubernetes pods restarting with reason \"OOMKilled\" and exit code 137\n- Container memory usage growing linearly over time without stabilizing\n- Increased login failures and 502 errors during pod restarts\n- Grafana memory dashboard showing sawtooth pattern (gradual rise, sudden drop)\n\n## Diagnosis\n\n### Step 1: Check pod restart history and OOM events\n```bash\nkubectl get pods -n production -l app=auth-service -o wide\nkubectl describe pod <pod-name> -n production | grep -A 5 \"Last State\"\n```\n\n### Step 2: Monitor real-time memory usage\n```bash\nkubectl top pods -n production -l app=auth-service\n```\n\nRun this every 30 seconds to observe the growth pattern.\n\n### Step 3: Capture heap dump before OOM\n```bash\nkubectl exec -it <pod-name> -n production -- jmap -dump:format=b,file=/tmp/heap.hprof 1\nkubectl cp production/<pod-name>:/tmp/heap.hprof ./heap.hprof\n```\n\n### Step 4: Check JVM or runtime memory settings\n```bash\nkubectl exec -it <pod-name> -n production -- env | grep -i memory\nkubectl get deployment auth-service -n production -o jsonpath='{.spec.template.spec.containers[0].resources}'\n```\n\n## Resolution\n\n### Immediate: Increase memory limit to buy time\n```bash\nkubectl set resources deployment/auth-service -n production --limits=memory=1Gi\n```\n\n### Short-term: Restart pods on a schedule to prevent OOM\n```bash\nkubectl rollout restart deployment/auth-service -n production\n```\n\n### Long-term: Fix the memory leak\nReview session cache eviction policy \u2014 ensure expired JWT tokens are removed\nAdd TTL-based eviction to in-memory cache\nConsider moving session cache to Redis instead of in-process memory\n\n## Escalation\n- If heap dump shows leak outside application code: page platform engineering team\n- If login success rate drops below 50%: escalate to P1\n\n2. Title: Service Resource Limits Policy, content: # Service Resource Limits Policy\n\n## Purpose\nRules for setting container CPU and memory limits on production\nservices. This is the policy of record \u2014 for pods that are actively\nOOMKilled, see the Auth Service Memory Troubleshooting runbook.\n\n## Memory rules\n- Every production container MUST declare both a memory request and a\n  memory limit. Unbounded containers are rejected at deploy time.\n- The memory limit must be at least 25% above observed steady-state\n  usage, measured over one week of production traffic.\n- For JVM services, the heap must be capped at 75% of the container\n  limit \u2014 metaspace, threads, and off-heap buffers need the rest.\n\n## CPU rules\n- CPU requests reflect steady-state usage; CPU limits are discouraged\n  (throttling hurts latency more than contention does).\n\n## Raising a limit\nA limit increase requires a capacity ticket with a heap analysis\nattached \u2014 see the Memory Profiling Guide for how to produce one.\nRaising a limit to silence OOMKilled restarts without a leak analysis\nis explicitly forbidden: it postpones the incident, it does not fix it.\n\n## Review\nLimits are re-baselined quarterly from resource usage reports.\n\n3. Title: Memory Profiling Guide for JVM Services, content: # Memory Profiling Guide for JVM Services\n\n## Purpose\nHow to capture and read memory profiles for JVM-based services. This is\na skills guide for routine analysis \u2014 if pods are actively restarting\nwith OOMKilled, follow the Auth Service Memory Troubleshooting runbook\nfirst and profile afterwards.\n\n## Capturing a heap dump\n- On-demand: jmap -dump:live,format=b,file=/tmp/heap.hprof <pid>\n- On crash: set -XX:+HeapDumpOnOutOfMemoryError so the JVM writes a\n  dump automatically before the container dies.\n- Copy dumps off the pod immediately \u2014 they do not survive a restart.\n\n## Reading the dump\nOpen the .hprof file in Eclipse MAT or VisualVM. Start with the\ndominator tree: the biggest retained sizes point to what is holding\nmemory. A steadily growing collection (often a cache or listener list)\nis the classic signature of a memory leak.\n\n## Continuous profiling\nFor gradual growth that never OOMs, compare two dumps taken hours\napart rather than staring at one. Delta analysis shows which objects\naccumulated between snapshots.\n\n## Interpreting limits\nRemember the JVM heap is only part of container memory \u2014 metaspace,\nthreads, and off-heap buffers count toward the pod's limit too. Sizing\nrules live in the Service Resource Limits Policy.\n\n4. Title: Payment Service DB Connection Pool Troubleshooting, content: # Payment Service DB Connection Pool Troubleshooting\n\n## Symptoms\n- Timeout errors in payment-service logs: \"connection pool exhausted\"\n- PostgreSQL logs showing \"FATAL: remaining connection slots are reserved\"\n- Elevated 503 error rate on /api/v1/checkout and /api/v1/payments endpoints\n- pg_stat_activity shows connections near max_connections limit\n\n## Diagnosis\n\n### Step 1: Check current connection count\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'payments'\"\n```\n\n### Step 2: Identify long-running queries holding connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE datname = 'payments' AND state != 'idle' ORDER BY duration DESC LIMIT 10\"\n```\n\n### Step 3: Check application pool configuration\n```bash\nkubectl exec -it deployment/payment-service -- cat /app/config/db.yaml | grep pool\n```\n\nExpected: pool_size=20, max_overflow=10, pool_timeout=30\n\n## Resolution\n### Immediate: Kill idle connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'payments' AND state = 'idle' AND query_start < now() - interval '5 minutes'\"\n```\n\n### Short-term: Restart pods to reset connection pools\n```bash\nkubectl rollout restart deployment/payment-service -n production\n```\n\n### Long-term: Tune pool settings\nIf recurring, increase pool_size in deployment config and consider PgBouncer for connection pooling at the infrastructure level.\n\n## Escalation\n- If connections do not drop after pod restart: page DBA team\n- If PostgreSQL itself is unresponsive: see Database Failover Runbook\n\n5. Title: API Gateway Rate Limit Configuration, content: /CD pipeline to reject rate limit configs below tier minimums\n- Add integration test that verifies each tier gets correct rate limit headers\n- Set up alerting when enterprise customers hit 429 errors\n\n## Escalation\n- If rate limits cannot be updated via config: page api-gateway team lead\n- If Redis is unresponsive: see Redis Cluster Troubleshooting Runbook\n",
+        "answer": "If the auth service pods are experiencing OOMKilled events, follow the steps outlined in the Auth Service Memory Troubleshooting guide:\n\n### Symptoms to Look For\n- Kubernetes pods restarting with reason \"OOMKilled\" and exit code 137\n- Container memory usage growing linearly over time without stabilizing\n- Increased login failures and 502 errors during pod restarts\n- Grafana memory dashboard showing a sawtooth pattern (gradual rise, sudden drop)\n\n### Diagnosis Steps\n1. **Check pod restart history and OOM events**:\n   ```bash\n   kubectl get pods -n production -l app=auth-service -o wide\n   kubectl describe pod <pod-name> -n production | grep -A 5 \"Last State\"\n   ```\n\n2. **Monitor real-time memory usage**:\n   ```bash\n   kubectl top pods -n production -l app=auth-service\n   ```\n   Run this every 30 seconds to observe the growth pattern.\n\n3. **Capture heap dump before OOM**:\n   ```bash\n   kubectl exec -it <pod-name> -n production -- jmap -dump:format=b,file=/tmp/heap.hprof 1\n   kubectl cp production/<pod-name>:/tmp/heap.hprof ./heap.hprof\n   ```\n\n4. **Check JVM or runtime memory settings**:\n   ```bash\n   kubectl exec -it <pod-name> -n production -- env | grep -i memory\n   kubectl get deployment auth-service -n production -o jsonpath='{.spec.template.spec.containers[0].resources}'\n   ```\n\n### Resolution Steps\n- **Immediate**: Increase memory limit to buy time:\n   ```bash\n   kubectl set resources deployment/auth-service -n production --limits=memory=1Gi\n   ```\n\n- **Short-term**: Restart pods on a schedule to prevent OOM:\n   ```bash\n   kubectl rollout restart deployment/auth-service -n production\n   ```\n\n- **Long-term**: Fix the memory leak by reviewing session cache eviction policy, ensuring expired JWT tokens are removed, adding TTL-based eviction to in-memory cache, or considering moving session cache to Redis instead of in-process memory.\n\n### Escalation\n- If the heap dump shows a leak outside application code, page the platform engineering team.\n- If the login success rate drops below 50%, escalate to P1. \n\nMake sure to follow these steps to diagnose and resolve the OOMKilled issues effectively."
+      },
+      "score": {
+        "case_id": "hybrid-auth-oom-07",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-auth-oom-07",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately reflects the retrieved context, including the symptoms, diagnosis steps, resolution steps, and escalation procedures for handling OOMKilled events in auth service pods. It is also highly relevant, as it directly addresses the question by providing a comprehensive guide to diagnosing and resolving the issue, covering all key actions mentioned in the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-auth-memleak-08",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "441da168-edb6-4f75-b232-b95f0522a60e",
+            0
+          ],
+          [
+            "9ca667b5-045b-47e6-834a-9e8e0c5beb39",
+            0
+          ],
+          [
+            "36321208-1887-460c-8458-4c31a0b7c7d9",
+            0
+          ],
+          [
+            "40c50a1b-ae61-4c7a-a183-562daf0be5d5",
+            0
+          ]
+        ],
+        "context": "1. Title: Auth Service Memory Troubleshooting, content: # Auth Service Memory Troubleshooting\n\n## Symptoms\n- Kubernetes pods restarting with reason \"OOMKilled\" and exit code 137\n- Container memory usage growing linearly over time without stabilizing\n- Increased login failures and 502 errors during pod restarts\n- Grafana memory dashboard showing sawtooth pattern (gradual rise, sudden drop)\n\n## Diagnosis\n\n### Step 1: Check pod restart history and OOM events\n```bash\nkubectl get pods -n production -l app=auth-service -o wide\nkubectl describe pod <pod-name> -n production | grep -A 5 \"Last State\"\n```\n\n### Step 2: Monitor real-time memory usage\n```bash\nkubectl top pods -n production -l app=auth-service\n```\n\nRun this every 30 seconds to observe the growth pattern.\n\n### Step 3: Capture heap dump before OOM\n```bash\nkubectl exec -it <pod-name> -n production -- jmap -dump:format=b,file=/tmp/heap.hprof 1\nkubectl cp production/<pod-name>:/tmp/heap.hprof ./heap.hprof\n```\n\n### Step 4: Check JVM or runtime memory settings\n```bash\nkubectl exec -it <pod-name> -n production -- env | grep -i memory\nkubectl get deployment auth-service -n production -o jsonpath='{.spec.template.spec.containers[0].resources}'\n```\n\n## Resolution\n\n### Immediate: Increase memory limit to buy time\n```bash\nkubectl set resources deployment/auth-service -n production --limits=memory=1Gi\n```\n\n### Short-term: Restart pods on a schedule to prevent OOM\n```bash\nkubectl rollout restart deployment/auth-service -n production\n```\n\n### Long-term: Fix the memory leak\nReview session cache eviction policy \u2014 ensure expired JWT tokens are removed\nAdd TTL-based eviction to in-memory cache\nConsider moving session cache to Redis instead of in-process memory\n\n## Escalation\n- If heap dump shows leak outside application code: page platform engineering team\n- If login success rate drops below 50%: escalate to P1\n\n2. Title: Memory Profiling Guide for JVM Services, content: # Memory Profiling Guide for JVM Services\n\n## Purpose\nHow to capture and read memory profiles for JVM-based services. This is\na skills guide for routine analysis \u2014 if pods are actively restarting\nwith OOMKilled, follow the Auth Service Memory Troubleshooting runbook\nfirst and profile afterwards.\n\n## Capturing a heap dump\n- On-demand: jmap -dump:live,format=b,file=/tmp/heap.hprof <pid>\n- On crash: set -XX:+HeapDumpOnOutOfMemoryError so the JVM writes a\n  dump automatically before the container dies.\n- Copy dumps off the pod immediately \u2014 they do not survive a restart.\n\n## Reading the dump\nOpen the .hprof file in Eclipse MAT or VisualVM. Start with the\ndominator tree: the biggest retained sizes point to what is holding\nmemory. A steadily growing collection (often a cache or listener list)\nis the classic signature of a memory leak.\n\n## Continuous profiling\nFor gradual growth that never OOMs, compare two dumps taken hours\napart rather than staring at one. Delta analysis shows which objects\naccumulated between snapshots.\n\n## Interpreting limits\nRemember the JVM heap is only part of container memory \u2014 metaspace,\nthreads, and off-heap buffers count toward the pod's limit too. Sizing\nrules live in the Service Resource Limits Policy.\n\n3. Title: Service Resource Limits Policy, content: # Service Resource Limits Policy\n\n## Purpose\nRules for setting container CPU and memory limits on production\nservices. This is the policy of record \u2014 for pods that are actively\nOOMKilled, see the Auth Service Memory Troubleshooting runbook.\n\n## Memory rules\n- Every production container MUST declare both a memory request and a\n  memory limit. Unbounded containers are rejected at deploy time.\n- The memory limit must be at least 25% above observed steady-state\n  usage, measured over one week of production traffic.\n- For JVM services, the heap must be capped at 75% of the container\n  limit \u2014 metaspace, threads, and off-heap buffers need the rest.\n\n## CPU rules\n- CPU requests reflect steady-state usage; CPU limits are discouraged\n  (throttling hurts latency more than contention does).\n\n## Raising a limit\nA limit increase requires a capacity ticket with a heap analysis\nattached \u2014 see the Memory Profiling Guide for how to produce one.\nRaising a limit to silence OOMKilled restarts without a leak analysis\nis explicitly forbidden: it postpones the incident, it does not fix it.\n\n## Review\nLimits are re-baselined quarterly from resource usage reports.\n\n4. Title: Payment Service DB Connection Pool Troubleshooting, content: # Payment Service DB Connection Pool Troubleshooting\n\n## Symptoms\n- Timeout errors in payment-service logs: \"connection pool exhausted\"\n- PostgreSQL logs showing \"FATAL: remaining connection slots are reserved\"\n- Elevated 503 error rate on /api/v1/checkout and /api/v1/payments endpoints\n- pg_stat_activity shows connections near max_connections limit\n\n## Diagnosis\n\n### Step 1: Check current connection count\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'payments'\"\n```\n\n### Step 2: Identify long-running queries holding connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE datname = 'payments' AND state != 'idle' ORDER BY duration DESC LIMIT 10\"\n```\n\n### Step 3: Check application pool configuration\n```bash\nkubectl exec -it deployment/payment-service -- cat /app/config/db.yaml | grep pool\n```\n\nExpected: pool_size=20, max_overflow=10, pool_timeout=30\n\n## Resolution\n### Immediate: Kill idle connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'payments' AND state = 'idle' AND query_start < now() - interval '5 minutes'\"\n```\n\n### Short-term: Restart pods to reset connection pools\n```bash\nkubectl rollout restart deployment/payment-service -n production\n```\n\n### Long-term: Tune pool settings\nIf recurring, increase pool_size in deployment config and consider PgBouncer for connection pooling at the infrastructure level.\n\n## Escalation\n- If connections do not drop after pod restart: page DBA team\n- If PostgreSQL itself is unresponsive: see Database Failover Runbook\n",
+        "answer": "To address the issue with your login service crashing and restarting due to memory issues, follow these steps:\n\n1. **Immediate Action**: Increase the memory limit to buy time. You can do this with the following command:\n   ```bash\n   kubectl set resources deployment/auth-service -n production --limits=memory=1Gi\n   ```\n\n2. **Short-term Solution**: Restart the pods on a schedule to prevent OOM (Out of Memory) errors:\n   ```bash\n   kubectl rollout restart deployment/auth-service -n production\n   ```\n\n3. **Long-term Fix**: Investigate and fix the memory leak. Consider the following actions:\n   - Review the session cache eviction policy to ensure expired JWT tokens are removed.\n   - Add TTL-based eviction to the in-memory cache.\n   - Consider moving the session cache to Redis instead of keeping it in-process memory.\n\n4. **Monitoring**: Check the pod restart history and OOM events to gather more information:\n   ```bash\n   kubectl get pods -n production -l app=auth-service -o wide\n   kubectl describe pod <pod-name> -n production | grep -A 5 \"Last State\"\n   ```\n\n5. **Memory Usage Monitoring**: Monitor real-time memory usage to observe the growth pattern:\n   ```bash\n   kubectl top pods -n production -l app=auth-service\n   ```\n\n6. **Heap Dump**: Capture a heap dump before the OOM occurs to analyze memory usage:\n   ```bash\n   kubectl exec -it <pod-name> -n production -- jmap -dump:format=b,file=/tmp/heap.hprof 1\n   kubectl cp production/<pod-name>:/tmp/heap.hprof ./heap.hprof\n   ```\n\nIf the heap dump shows a memory leak outside of your application code, escalate the issue to the platform engineering team. If the login success rate drops below 50%, escalate to a P1 incident [1]."
+      },
+      "score": {
+        "case_id": "hybrid-auth-memleak-08",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-auth-memleak-08",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately reflects the steps and solutions provided in the retrieved context, including immediate, short-term, and long-term actions. It is also highly relevant, as it directly addresses the question by outlining how to stop the login service from crashing due to memory issues, covering all key actions mentioned in the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-auth-heapdump-09",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "9ca667b5-045b-47e6-834a-9e8e0c5beb39",
+            0
+          ],
+          [
+            "441da168-edb6-4f75-b232-b95f0522a60e",
+            0
+          ],
+          [
+            "36321208-1887-460c-8458-4c31a0b7c7d9",
+            0
+          ]
+        ],
+        "context": "1. Title: Memory Profiling Guide for JVM Services, content: # Memory Profiling Guide for JVM Services\n\n## Purpose\nHow to capture and read memory profiles for JVM-based services. This is\na skills guide for routine analysis \u2014 if pods are actively restarting\nwith OOMKilled, follow the Auth Service Memory Troubleshooting runbook\nfirst and profile afterwards.\n\n## Capturing a heap dump\n- On-demand: jmap -dump:live,format=b,file=/tmp/heap.hprof <pid>\n- On crash: set -XX:+HeapDumpOnOutOfMemoryError so the JVM writes a\n  dump automatically before the container dies.\n- Copy dumps off the pod immediately \u2014 they do not survive a restart.\n\n## Reading the dump\nOpen the .hprof file in Eclipse MAT or VisualVM. Start with the\ndominator tree: the biggest retained sizes point to what is holding\nmemory. A steadily growing collection (often a cache or listener list)\nis the classic signature of a memory leak.\n\n## Continuous profiling\nFor gradual growth that never OOMs, compare two dumps taken hours\napart rather than staring at one. Delta analysis shows which objects\naccumulated between snapshots.\n\n## Interpreting limits\nRemember the JVM heap is only part of container memory \u2014 metaspace,\nthreads, and off-heap buffers count toward the pod's limit too. Sizing\nrules live in the Service Resource Limits Policy.\n\n2. Title: Auth Service Memory Troubleshooting, content: # Auth Service Memory Troubleshooting\n\n## Symptoms\n- Kubernetes pods restarting with reason \"OOMKilled\" and exit code 137\n- Container memory usage growing linearly over time without stabilizing\n- Increased login failures and 502 errors during pod restarts\n- Grafana memory dashboard showing sawtooth pattern (gradual rise, sudden drop)\n\n## Diagnosis\n\n### Step 1: Check pod restart history and OOM events\n```bash\nkubectl get pods -n production -l app=auth-service -o wide\nkubectl describe pod <pod-name> -n production | grep -A 5 \"Last State\"\n```\n\n### Step 2: Monitor real-time memory usage\n```bash\nkubectl top pods -n production -l app=auth-service\n```\n\nRun this every 30 seconds to observe the growth pattern.\n\n### Step 3: Capture heap dump before OOM\n```bash\nkubectl exec -it <pod-name> -n production -- jmap -dump:format=b,file=/tmp/heap.hprof 1\nkubectl cp production/<pod-name>:/tmp/heap.hprof ./heap.hprof\n```\n\n### Step 4: Check JVM or runtime memory settings\n```bash\nkubectl exec -it <pod-name> -n production -- env | grep -i memory\nkubectl get deployment auth-service -n production -o jsonpath='{.spec.template.spec.containers[0].resources}'\n```\n\n## Resolution\n\n### Immediate: Increase memory limit to buy time\n```bash\nkubectl set resources deployment/auth-service -n production --limits=memory=1Gi\n```\n\n### Short-term: Restart pods on a schedule to prevent OOM\n```bash\nkubectl rollout restart deployment/auth-service -n production\n```\n\n### Long-term: Fix the memory leak\nReview session cache eviction policy \u2014 ensure expired JWT tokens are removed\nAdd TTL-based eviction to in-memory cache\nConsider moving session cache to Redis instead of in-process memory\n\n## Escalation\n- If heap dump shows leak outside application code: page platform engineering team\n- If login success rate drops below 50%: escalate to P1\n\n3. Title: Service Resource Limits Policy, content: # Service Resource Limits Policy\n\n## Purpose\nRules for setting container CPU and memory limits on production\nservices. This is the policy of record \u2014 for pods that are actively\nOOMKilled, see the Auth Service Memory Troubleshooting runbook.\n\n## Memory rules\n- Every production container MUST declare both a memory request and a\n  memory limit. Unbounded containers are rejected at deploy time.\n- The memory limit must be at least 25% above observed steady-state\n  usage, measured over one week of production traffic.\n- For JVM services, the heap must be capped at 75% of the container\n  limit \u2014 metaspace, threads, and off-heap buffers need the rest.\n\n## CPU rules\n- CPU requests reflect steady-state usage; CPU limits are discouraged\n  (throttling hurts latency more than contention does).\n\n## Raising a limit\nA limit increase requires a capacity ticket with a heap analysis\nattached \u2014 see the Memory Profiling Guide for how to produce one.\nRaising a limit to silence OOMKilled restarts without a leak analysis\nis explicitly forbidden: it postpones the incident, it does not fix it.\n\n## Review\nLimits are re-baselined quarterly from resource usage reports.\n",
+        "answer": "To capture and read a heap dump for a JVM service, follow these steps:\n\n### Capturing a Heap Dump\n1. **On-demand**: Use the following command to capture a heap dump:\n   ```bash\n   jmap -dump:live,format=b,file=/tmp/heap.hprof <pid>\n   ```\n   Replace `<pid>` with the process ID of the JVM service.\n\n2. **On crash**: Set the JVM option to automatically write a dump when an OutOfMemoryError occurs:\n   ```bash\n   -XX:+HeapDumpOnOutOfMemoryError\n   ```\n   This will create a heap dump before the container dies.\n\n3. **Copy Dumps**: Make sure to copy the heap dump off the pod immediately, as they do not survive a restart.\n\n### Reading the Dump\n- Open the `.hprof` file in either Eclipse MAT (Memory Analyzer Tool) or VisualVM.\n- Start your analysis with the dominator tree, which will help identify the biggest retained sizes and point to what is holding memory. Look for steadily growing collections, which often indicate a memory leak [1]."
+      },
+      "score": {
+        "case_id": "hybrid-auth-heapdump-09",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-auth-heapdump-09",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately reflects the steps and tools mentioned in the retrieved context for capturing and reading a heap dump. It includes the use of jmap, the -XX:+HeapDumpOnOutOfMemoryError option, and the recommendation to copy dumps off the pod immediately. The answer is also fully relevant, as it directly addresses the question by providing a complete procedure for capturing and reading a heap dump, covering all key actions mentioned in the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-monitoring-disk-10",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "7490c6ae-f9e1-48cd-af26-35731231e680",
+            0
+          ],
+          [
+            "e2c3b310-9aa1-4fac-ab3d-b8e3ca8ed358",
+            0
+          ],
+          [
+            "c715c753-740f-4633-9f88-4f1f96a831cf",
+            0
+          ],
+          [
+            "441da168-edb6-4f75-b232-b95f0522a60e",
+            0
+          ],
+          [
+            "40c50a1b-ae61-4c7a-a183-562daf0be5d5",
+            0
+          ]
+        ],
+        "context": "1. Title: Disk Space Management Guide, content: # Disk Space Management Guide\n## Symptoms\n- Alertmanager alert \"DiskSpaceCritical\" for monitoring nodes\n- df -h shows /var/log partition above 90%\n- Logrotate not running \u2014 stale /var/lib/logrotate/logrotate.status\n- Elasticsearch refusing to index new documents with \"flood stage disk watermark exceeded\"\n\n## Diagnosis\n\n### Step 1: Identify what is consuming disk space\n```bash\ndu -sh /var/log/* | sort -rh | head -20\n```\n\n### Step 2: Check logrotate status and errors\n```bash\ncat /var/lib/logrotate/logrotate.status\nlogrotate -d /etc/logrotate.conf 2>&1 | grep error\n```\n\nThe -d flag runs logrotate in debug mode without actually rotating.\n\n### Step 3: Check Elasticsearch index sizes\n```bash\ncurl -s http://localhost:9200/_cat/indices?v&s=store.size:desc | head -20\n```\n\n### Step 4: Verify cron is running logrotate\n```bash\nsystemctl status crond\ngrep logrotate /var/log/cron\n```\n\n## Resolution\n\n### Immediate: Free disk space by removing old logs\n```bash\nfind /var/log -name \"*.gz\" -mtime +7 -delete\njournalctl --vacuum-size=500M\n```\n\n### Fix logrotate: Run manually and fix configuration\n```bash\nlogrotate -f /etc/logrotate.conf\n```\nIf this fails, check for syntax errors in /etc/logrotate.d/ config files.\n\n### Clean old Elasticsearch indices\n```bash\ncurator_cli --host localhost delete_indices --filter_list '[{\"filtertype\":\"age\",\"source\":\"creation_date\",\"direction\":\"older\",\"unit\":\"days\",\"unit_count\":30}]'\n```\n\n### Prevent recurrence\n- Verify logrotate cron entry exists: cat /etc/cron.daily/logrotate\n- Set up Elasticsearch ILM (Index Lifecycle Management) policy for automatic index deletion\n- Add disk usage monitoring alert at 80% threshold as early warning\n\n## Escalation\n- If disk reaches 98% and cannot free space: page infrastructure team immediately\n- If Elasticsearch cluster goes red: see Elasticsearch Cluster Recovery Runbook\n\n2. Title: Log Rotation FAQ, content: # Log Rotation FAQ\n\n## How is log rotation configured?\nVia logrotate, driven by a daily cron job. Per-service configs live in\n/etc/logrotate.d/. The default policy rotates at 100 MB or daily,\nwhichever comes first, keeping 7 compressed generations.\n\n## How do I add rotation for a new log file?\nDrop a config into /etc/logrotate.d/ in your deploy manifest. Test it\nwith logrotate -d (dry run) before shipping \u2014 a typo silently disables\nrotation for that file.\n\n## Why is my log file huge even though rotation is configured?\nThe usual suspects: the config references the wrong path, the file\nmatched a `nocreate` rule after the service was renamed, or the cron\njob itself is not running. If disk usage is already at critical levels,\nswitch to the Disk Space Management Guide \u2014 that is an incident, not a\nconfiguration question.\n\n## Do rotated logs count against disk quota?\nYes, until the retention window expires. Compression reduces them\nroughly 10x. Retention periods are covered in the Log Retention Best\nPractices Guide.\n\n## Where do application logs go after rotation?\nCompressed generations stay on the host; the log shipper has already\nforwarded content to central storage, so local generations are purely\na safety net.\n\n3. Title: Log Retention Best Practices Guide, content: # Log Retention Best Practices Guide\n\n## Purpose\nHow long to keep logs, where, and why. This is a planning guide \u2014 if a\nhost is already at critical disk usage, follow the Disk Space\nManagement Guide instead of tuning retention mid-incident.\n\n## Retention tiers\n- Hot (searchable, central storage): 14 days for application logs,\n  30 days for access logs.\n- Warm (compressed object storage): 90 days, restorable within hours.\n- Cold (compliance archive): 13 months for auth and payment audit\n  trails, per the security baseline.\n\n## Local host retention\nHosts keep only the rotated, compressed generations as a safety net \u2014\nsee the Log Rotation FAQ for the mechanics. Local retention should\nnever exceed 7 generations; the log shipper is the source of truth,\nnot the host's disk.\n\n## Sizing the budget\nEstimate: daily log volume x compression factor x retention days per\ntier. Re-estimate after enabling debug logging anywhere \u2014 one service\nat debug level can triple daily volume and quietly eat the disk\nheadroom that rotation assumes.\n\n## Deleting early\nRetention shortening requires sign-off from security (audit logs) or\nthe service owner (application logs). Deleting logs to free disk space\nduring an incident is a last resort and must be logged in the incident\ntimeline.\n\n4. Title: Auth Service Memory Troubleshooting, content: # Auth Service Memory Troubleshooting\n\n## Symptoms\n- Kubernetes pods restarting with reason \"OOMKilled\" and exit code 137\n- Container memory usage growing linearly over time without stabilizing\n- Increased login failures and 502 errors during pod restarts\n- Grafana memory dashboard showing sawtooth pattern (gradual rise, sudden drop)\n\n## Diagnosis\n\n### Step 1: Check pod restart history and OOM events\n```bash\nkubectl get pods -n production -l app=auth-service -o wide\nkubectl describe pod <pod-name> -n production | grep -A 5 \"Last State\"\n```\n\n### Step 2: Monitor real-time memory usage\n```bash\nkubectl top pods -n production -l app=auth-service\n```\n\nRun this every 30 seconds to observe the growth pattern.\n\n### Step 3: Capture heap dump before OOM\n```bash\nkubectl exec -it <pod-name> -n production -- jmap -dump:format=b,file=/tmp/heap.hprof 1\nkubectl cp production/<pod-name>:/tmp/heap.hprof ./heap.hprof\n```\n\n### Step 4: Check JVM or runtime memory settings\n```bash\nkubectl exec -it <pod-name> -n production -- env | grep -i memory\nkubectl get deployment auth-service -n production -o jsonpath='{.spec.template.spec.containers[0].resources}'\n```\n\n## Resolution\n\n### Immediate: Increase memory limit to buy time\n```bash\nkubectl set resources deployment/auth-service -n production --limits=memory=1Gi\n```\n\n### Short-term: Restart pods on a schedule to prevent OOM\n```bash\nkubectl rollout restart deployment/auth-service -n production\n```\n\n### Long-term: Fix the memory leak\nReview session cache eviction policy \u2014 ensure expired JWT tokens are removed\nAdd TTL-based eviction to in-memory cache\nConsider moving session cache to Redis instead of in-process memory\n\n## Escalation\n- If heap dump shows leak outside application code: page platform engineering team\n- If login success rate drops below 50%: escalate to P1\n\n5. Title: Payment Service DB Connection Pool Troubleshooting, content: # Payment Service DB Connection Pool Troubleshooting\n\n## Symptoms\n- Timeout errors in payment-service logs: \"connection pool exhausted\"\n- PostgreSQL logs showing \"FATAL: remaining connection slots are reserved\"\n- Elevated 503 error rate on /api/v1/checkout and /api/v1/payments endpoints\n- pg_stat_activity shows connections near max_connections limit\n\n## Diagnosis\n\n### Step 1: Check current connection count\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'payments'\"\n```\n\n### Step 2: Identify long-running queries holding connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE datname = 'payments' AND state != 'idle' ORDER BY duration DESC LIMIT 10\"\n```\n\n### Step 3: Check application pool configuration\n```bash\nkubectl exec -it deployment/payment-service -- cat /app/config/db.yaml | grep pool\n```\n\nExpected: pool_size=20, max_overflow=10, pool_timeout=30\n\n## Resolution\n### Immediate: Kill idle connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'payments' AND state = 'idle' AND query_start < now() - interval '5 minutes'\"\n```\n\n### Short-term: Restart pods to reset connection pools\n```bash\nkubectl rollout restart deployment/payment-service -n production\n```\n\n### Long-term: Tune pool settings\nIf recurring, increase pool_size in deployment config and consider PgBouncer for connection pooling at the infrastructure level.\n\n## Escalation\n- If connections do not drop after pod restart: page DBA team\n- If PostgreSQL itself is unresponsive: see Database Failover Runbook\n",
+        "answer": "To address the \"DiskSpaceCritical\" alert and the full /var/log partition, follow these steps:\n\n### Immediate Actions\n1. **Free Disk Space by Removing Old Logs**:\n   ```bash\n   find /var/log -name \"*.gz\" -mtime +7 -delete\n   journalctl --vacuum-size=500M\n   ```\n\n2. **Check Logrotate Status and Errors**:\n   ```bash\n   cat /var/lib/logrotate/logrotate.status\n   logrotate -d /etc/logrotate.conf 2>&1 | grep error\n   ```\n\n3. **Verify Cron is Running Logrotate**:\n   ```bash\n   systemctl status crond\n   grep logrotate /var/log/cron\n   ```\n\n### Fix Logrotate\nIf logrotate is not functioning correctly, run it manually:\n```bash\nlogrotate -f /etc/logrotate.conf\n```\nIf this fails, check for syntax errors in the configuration files located in `/etc/logrotate.d/`.\n\n### Clean Old Elasticsearch Indices\nIf Elasticsearch is refusing to index new documents due to disk space issues, consider cleaning old indices:\n```bash\ncurator_cli --host localhost delete_indices --filter_list '[{\"filtertype\":\"age\",\"source\":\"creation_date\",\"direction\":\"older\",\"unit\":\"days\",\"unit_count\":30}]'\n```\n\n### Prevent Recurrence\n- Ensure the logrotate cron entry exists: \n  ```bash\n  cat /etc/cron.daily/logrotate\n  ```\n- Set up an Elasticsearch ILM (Index Lifecycle Management) policy for automatic index deletion.\n- Add disk usage monitoring alerts at an 80% threshold for early warnings.\n\n### Escalation\nIf the disk reaches 98% and you cannot free up space, page the infrastructure team immediately. If the Elasticsearch cluster goes red, refer to the Elasticsearch Cluster Recovery Runbook [1]."
+      },
+      "score": {
+        "case_id": "hybrid-monitoring-disk-10",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-monitoring-disk-10",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately reflects the steps and commands provided in the retrieved context, such as freeing disk space by deleting old logs, checking logrotate status, and cleaning old Elasticsearch indices. It is also fully relevant, as it directly addresses the question by covering all key actions mentioned in the reference answer, including identifying disk space issues, fixing logrotate, and preventing recurrence."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-monitoring-esindex-11",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "7490c6ae-f9e1-48cd-af26-35731231e680",
+            0
+          ]
+        ],
+        "context": "1. Title: Disk Space Management Guide, content: # Disk Space Management Guide\n## Symptoms\n- Alertmanager alert \"DiskSpaceCritical\" for monitoring nodes\n- df -h shows /var/log partition above 90%\n- Logrotate not running \u2014 stale /var/lib/logrotate/logrotate.status\n- Elasticsearch refusing to index new documents with \"flood stage disk watermark exceeded\"\n\n## Diagnosis\n\n### Step 1: Identify what is consuming disk space\n```bash\ndu -sh /var/log/* | sort -rh | head -20\n```\n\n### Step 2: Check logrotate status and errors\n```bash\ncat /var/lib/logrotate/logrotate.status\nlogrotate -d /etc/logrotate.conf 2>&1 | grep error\n```\n\nThe -d flag runs logrotate in debug mode without actually rotating.\n\n### Step 3: Check Elasticsearch index sizes\n```bash\ncurl -s http://localhost:9200/_cat/indices?v&s=store.size:desc | head -20\n```\n\n### Step 4: Verify cron is running logrotate\n```bash\nsystemctl status crond\ngrep logrotate /var/log/cron\n```\n\n## Resolution\n\n### Immediate: Free disk space by removing old logs\n```bash\nfind /var/log -name \"*.gz\" -mtime +7 -delete\njournalctl --vacuum-size=500M\n```\n\n### Fix logrotate: Run manually and fix configuration\n```bash\nlogrotate -f /etc/logrotate.conf\n```\nIf this fails, check for syntax errors in /etc/logrotate.d/ config files.\n\n### Clean old Elasticsearch indices\n```bash\ncurator_cli --host localhost delete_indices --filter_list '[{\"filtertype\":\"age\",\"source\":\"creation_date\",\"direction\":\"older\",\"unit\":\"days\",\"unit_count\":30}]'\n```\n\n### Prevent recurrence\n- Verify logrotate cron entry exists: cat /etc/cron.daily/logrotate\n- Set up Elasticsearch ILM (Index Lifecycle Management) policy for automatic index deletion\n- Add disk usage monitoring alert at 80% threshold as early warning\n\n## Escalation\n- If disk reaches 98% and cannot free space: page infrastructure team immediately\n- If Elasticsearch cluster goes red: see Elasticsearch Cluster Recovery Runbook\n",
+        "answer": "To address the issue of low disk space and Elasticsearch not indexing, follow these steps:\n\n### Immediate Actions\n1. **Free Disk Space by Removing Old Logs**:\n   ```bash\n   find /var/log -name \"*.gz\" -mtime +7 -delete\n   journalctl --vacuum-size=500M\n   ```\n\n2. **Check Logrotate Status**:\n   Ensure that logrotate is functioning properly. You can run:\n   ```bash\n   cat /var/lib/logrotate/logrotate.status\n   logrotate -d /etc/logrotate.conf 2>&1 | grep error\n   ```\n   If logrotate is not running, you may need to run it manually:\n   ```bash\n   logrotate -f /etc/logrotate.conf\n   ```\n\n3. **Clean Old Elasticsearch Indices**:\n   If necessary, clean up old indices to free up space:\n   ```bash\n   curator_cli --host localhost delete_indices --filter_list '[{\"filtertype\":\"age\",\"source\":\"creation_date\",\"direction\":\"older\",\"unit\":\"days\",\"unit_count\":30}]'\n   ```\n\n### Prevent Recurrence\n- Verify that the logrotate cron entry exists:\n   ```bash\n   cat /etc/cron.daily/logrotate\n   ```\n- Set up an Elasticsearch Index Lifecycle Management (ILM) policy for automatic index deletion.\n- Consider adding a disk usage monitoring alert at an 80% threshold for early warning.\n\n### Escalation\nIf the disk reaches 98% and you cannot free up space, page the infrastructure team immediately. If the Elasticsearch cluster goes red, refer to the Elasticsearch Cluster Recovery Runbook. \n\nBy following these steps, you should be able to resolve the disk space issue and restore Elasticsearch indexing functionality."
+      },
+      "score": {
+        "case_id": "hybrid-monitoring-esindex-11",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-monitoring-esindex-11",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately reflects the steps and commands provided in the retrieved context, such as freeing disk space, checking logrotate status, and cleaning old Elasticsearch indices. It is also fully relevant, as it directly addresses the question by outlining immediate actions to free disk space and restore Elasticsearch indexing, as well as preventive measures and escalation steps, covering all key actions in the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-monitoring-rotation-12",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "e2c3b310-9aa1-4fac-ab3d-b8e3ca8ed358",
+            0
+          ],
+          [
+            "7490c6ae-f9e1-48cd-af26-35731231e680",
+            0
+          ],
+          [
+            "c715c753-740f-4633-9f88-4f1f96a831cf",
+            0
+          ]
+        ],
+        "context": "1. Title: Log Rotation FAQ, content: # Log Rotation FAQ\n\n## How is log rotation configured?\nVia logrotate, driven by a daily cron job. Per-service configs live in\n/etc/logrotate.d/. The default policy rotates at 100 MB or daily,\nwhichever comes first, keeping 7 compressed generations.\n\n## How do I add rotation for a new log file?\nDrop a config into /etc/logrotate.d/ in your deploy manifest. Test it\nwith logrotate -d (dry run) before shipping \u2014 a typo silently disables\nrotation for that file.\n\n## Why is my log file huge even though rotation is configured?\nThe usual suspects: the config references the wrong path, the file\nmatched a `nocreate` rule after the service was renamed, or the cron\njob itself is not running. If disk usage is already at critical levels,\nswitch to the Disk Space Management Guide \u2014 that is an incident, not a\nconfiguration question.\n\n## Do rotated logs count against disk quota?\nYes, until the retention window expires. Compression reduces them\nroughly 10x. Retention periods are covered in the Log Retention Best\nPractices Guide.\n\n## Where do application logs go after rotation?\nCompressed generations stay on the host; the log shipper has already\nforwarded content to central storage, so local generations are purely\na safety net.\n\n2. Title: Disk Space Management Guide, content: # Disk Space Management Guide\n## Symptoms\n- Alertmanager alert \"DiskSpaceCritical\" for monitoring nodes\n- df -h shows /var/log partition above 90%\n- Logrotate not running \u2014 stale /var/lib/logrotate/logrotate.status\n- Elasticsearch refusing to index new documents with \"flood stage disk watermark exceeded\"\n\n## Diagnosis\n\n### Step 1: Identify what is consuming disk space\n```bash\ndu -sh /var/log/* | sort -rh | head -20\n```\n\n### Step 2: Check logrotate status and errors\n```bash\ncat /var/lib/logrotate/logrotate.status\nlogrotate -d /etc/logrotate.conf 2>&1 | grep error\n```\n\nThe -d flag runs logrotate in debug mode without actually rotating.\n\n### Step 3: Check Elasticsearch index sizes\n```bash\ncurl -s http://localhost:9200/_cat/indices?v&s=store.size:desc | head -20\n```\n\n### Step 4: Verify cron is running logrotate\n```bash\nsystemctl status crond\ngrep logrotate /var/log/cron\n```\n\n## Resolution\n\n### Immediate: Free disk space by removing old logs\n```bash\nfind /var/log -name \"*.gz\" -mtime +7 -delete\njournalctl --vacuum-size=500M\n```\n\n### Fix logrotate: Run manually and fix configuration\n```bash\nlogrotate -f /etc/logrotate.conf\n```\nIf this fails, check for syntax errors in /etc/logrotate.d/ config files.\n\n### Clean old Elasticsearch indices\n```bash\ncurator_cli --host localhost delete_indices --filter_list '[{\"filtertype\":\"age\",\"source\":\"creation_date\",\"direction\":\"older\",\"unit\":\"days\",\"unit_count\":30}]'\n```\n\n### Prevent recurrence\n- Verify logrotate cron entry exists: cat /etc/cron.daily/logrotate\n- Set up Elasticsearch ILM (Index Lifecycle Management) policy for automatic index deletion\n- Add disk usage monitoring alert at 80% threshold as early warning\n\n## Escalation\n- If disk reaches 98% and cannot free space: page infrastructure team immediately\n- If Elasticsearch cluster goes red: see Elasticsearch Cluster Recovery Runbook\n\n3. Title: Log Retention Best Practices Guide, content: # Log Retention Best Practices Guide\n\n## Purpose\nHow long to keep logs, where, and why. This is a planning guide \u2014 if a\nhost is already at critical disk usage, follow the Disk Space\nManagement Guide instead of tuning retention mid-incident.\n\n## Retention tiers\n- Hot (searchable, central storage): 14 days for application logs,\n  30 days for access logs.\n- Warm (compressed object storage): 90 days, restorable within hours.\n- Cold (compliance archive): 13 months for auth and payment audit\n  trails, per the security baseline.\n\n## Local host retention\nHosts keep only the rotated, compressed generations as a safety net \u2014\nsee the Log Rotation FAQ for the mechanics. Local retention should\nnever exceed 7 generations; the log shipper is the source of truth,\nnot the host's disk.\n\n## Sizing the budget\nEstimate: daily log volume x compression factor x retention days per\ntier. Re-estimate after enabling debug logging anywhere \u2014 one service\nat debug level can triple daily volume and quietly eat the disk\nheadroom that rotation assumes.\n\n## Deleting early\nRetention shortening requires sign-off from security (audit logs) or\nthe service owner (application logs). Deleting logs to free disk space\nduring an incident is a last resort and must be logged in the incident\ntimeline.\n",
+        "answer": "To add rotation for a new log file, you need to drop a config into `/etc/logrotate.d/` in your deploy manifest. It's important to test the configuration with `logrotate -d` (dry run) before shipping it, as a typo can silently disable rotation for that file [1]."
+      },
+      "score": {
+        "case_id": "hybrid-monitoring-rotation-12",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-monitoring-rotation-12",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately reflects the information provided in the retrieved context about adding log rotation for a new log file. It also completely addresses the question by including the key steps of dropping a config into /etc/logrotate.d/ and testing it with logrotate -d, matching the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-vpn-cert-13",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "a8f38b11-f86e-4c24-b234-073d55cda185",
+            0
+          ],
+          [
+            "85c6f3ca-dd8c-4b05-854f-8d64194a3709",
+            0
+          ],
+          [
+            "1037007a-2830-4e92-a8f2-876b29120290",
+            0
+          ]
+        ],
+        "context": "1. Title: VPN Certificate Renewal Runbook, content: # VPN Certificate Renewal Runbook\n\n## Symptoms\n- VPN client connections failing with \"TLS handshake failed\"\n- Users reporting \"certificate has expired\" or \"SSL_ERROR_EXPIRED_CERT_ALERT\"\n- OpenVPN/WireGuard logs showing TLS negotiation failures\n- Spike in helpdesk tickets from remote employees unable to connect\n\n## Diagnosis\n\n### Step 1: Check certificate expiration date\n```bash\nopenssl x509 -in /etc/openvpn/server.crt -noout -dates\n```\n\nLook for notAfter \u2014 if this date is in the past, the certificate has expired.\n\n### Step 2: Verify certificate chain\n```bash\nopenssl verify -CAfile /etc/openvpn/ca.crt /etc/openvpn/server.crt\n```\n\n### Step 3: Check certbot renewal status\n```bash\ncertbot certificates --domain vpn.company.internal\n```\n\n## Resolution\n### Immediate: Renew certificate manually\n```bash\ncertbot renew --cert-name vpn.company.internal --force-renewal\n```\n\n### Restart VPN service to load new certificate\n```bash\nsystemctl restart openvpn@server\n```\n\n### Verify new certificate is loaded\n```bash\nopenssl s_client -connect vpn.company.internal:443 2>/dev/null | openssl x509 -noout -dates\n```\n\n### Prevent recurrence: Enable auto-renewal\n```bash\n# Add to crontab\necho \"0 3 * * * certbot renew --quiet --post-hook 'systemctl restart openvpn@server'\" | crontab -\n```\n\n## Escalation\n- If certificate cannot be renewed (CA issues): page infrastructure security team\n- If VPN service does not restart after renewal: see VPN Gateway Recovery Runbook\n\n2. Title: Certificate Renewal Policy, content: # Certificate Renewal Policy\n\n## Purpose\nRules governing TLS certificate lifetimes and renewal across\ninfrastructure. This is the policy of record \u2014 for an already-expired\ncertificate breaking connections, execute the VPN Certificate Renewal\nRunbook immediately and file the policy review afterwards.\n\n## Lifetime rules\n- Public-facing TLS certificates: 90-day lifetime, auto-renewed via\n  ACME at two-thirds of lifetime.\n- Internal service certificates: 1-year lifetime, auto-renewed by the\n  internal CA.\n- VPN gateway certificates: 1-year lifetime. Renewal is MANUAL until\n  the gateway appliance supports ACME \u2014 this exception is the reason\n  the VPN runbook exists.\n\n## Monitoring requirements\nEvery certificate must be registered in the expiry dashboard. Alerts\nfire at 30, 14, and 7 days before expiry to the owning team's\nchannel. An expired production certificate is automatically a SEV-2.\n\n## Ownership\nEach certificate has a named owning team. Certificates without an\nowner are treated as policy violations and escalated at the quarterly\nreview.\n\n## Manual renewals\nAny certificate that cannot auto-renew must have a documented runbook\nand a calendar reminder at 30 days before expiry, reviewed quarterly.\n\n3. Title: VPN Access FAQ, content: # VPN Access FAQ\n\n## I can't connect to the VPN. Is it broken?\nCheck the status page first. If only YOU are affected, it is almost\nalways local: wrong password, expired MFA enrollment, or a stale\nclient. If EVERYONE is failing to connect at once, that is an incident\n\u2014 typically an expired gateway certificate; see the VPN Certificate\nRenewal Runbook.\n\n## The VPN was just fixed but I still can't connect.\nYour client may have cached the old certificate. Restart the VPN\nclient to clear its cache before reporting a problem.\n\n## Why was I disconnected after 8 hours?\nSession lifetime is capped at 8 hours by policy. Reconnect and you\nwill get a fresh session.\n\n## How do I set up the VPN on a new laptop?\nInstall the client from the self-service portal and enroll the device\nin MFA. Certificates are provisioned automatically at first login \u2014\nyou never need to install one manually.\n\n## Which traffic goes through the VPN?\nSplit tunneling is enabled: only internal ranges route through the\ngateway. Streaming and general browsing use your normal connection,\nso do not report slow YouTube as a VPN incident.\n",
+        "answer": "If you are experiencing a \"TLS handshake failed\" error and users are reporting that the \"certificate has expired,\" you should follow the steps outlined in the VPN Certificate Renewal Runbook. \n\n1. **Check the certificate expiration date** using the following command:\n   ```bash\n   openssl x509 -in /etc/openvpn/server.crt -noout -dates\n   ```\n   Look for the `notAfter` date; if it is in the past, the certificate has expired.\n\n2. **Verify the certificate chain** with:\n   ```bash\n   openssl verify -CAfile /etc/openvpn/ca.crt /etc/openvpn/server.crt\n   ```\n\n3. **Check certbot renewal status**:\n   ```bash\n   certbot certificates --domain vpn.company.internal\n   ```\n\nIf the certificate has expired, you can manually renew it with:\n```bash\ncertbot renew --cert-name vpn.company.internal --force-renewal\n```\n\nAfter renewing the certificate, restart the VPN service to load the new certificate:\n```bash\nsystemctl restart openvpn@server\n```\n\nFinally, verify that the new certificate is loaded:\n```bash\nopenssl s_client -connect vpn.company.internal:443 2>/dev/null | openssl x509 -noout -dates\n```\n\nTo prevent future occurrences, consider enabling auto-renewal by adding the following to crontab:\n```bash\necho \"0 3 * * * certbot renew --quiet --post-hook 'systemctl restart openvpn@server'\" | crontab -\n```\n\nIf you encounter issues renewing the certificate or restarting the VPN service, refer to the escalation procedures in the runbook."
+      },
+      "score": {
+        "case_id": "hybrid-vpn-cert-13",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-vpn-cert-13",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately follows the steps and commands provided in the retrieved context for diagnosing and resolving the expired certificate issue. It is also fully relevant, as it directly addresses the question by outlining the necessary steps to renew the certificate, restart the VPN service, verify the new certificate, and enable auto-renewal, matching the key actions in the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-vpn-allremote-14",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "1037007a-2830-4e92-a8f2-876b29120290",
+            0
+          ],
+          [
+            "a8f38b11-f86e-4c24-b234-073d55cda185",
+            0
+          ],
+          [
+            "85c6f3ca-dd8c-4b05-854f-8d64194a3709",
+            0
+          ],
+          [
+            "40c50a1b-ae61-4c7a-a183-562daf0be5d5",
+            0
+          ],
+          [
+            "36e50a3c-4f7d-4aca-be58-bfbe1863e482",
+            0
+          ]
+        ],
+        "context": "1. Title: VPN Access FAQ, content: # VPN Access FAQ\n\n## I can't connect to the VPN. Is it broken?\nCheck the status page first. If only YOU are affected, it is almost\nalways local: wrong password, expired MFA enrollment, or a stale\nclient. If EVERYONE is failing to connect at once, that is an incident\n\u2014 typically an expired gateway certificate; see the VPN Certificate\nRenewal Runbook.\n\n## The VPN was just fixed but I still can't connect.\nYour client may have cached the old certificate. Restart the VPN\nclient to clear its cache before reporting a problem.\n\n## Why was I disconnected after 8 hours?\nSession lifetime is capped at 8 hours by policy. Reconnect and you\nwill get a fresh session.\n\n## How do I set up the VPN on a new laptop?\nInstall the client from the self-service portal and enroll the device\nin MFA. Certificates are provisioned automatically at first login \u2014\nyou never need to install one manually.\n\n## Which traffic goes through the VPN?\nSplit tunneling is enabled: only internal ranges route through the\ngateway. Streaming and general browsing use your normal connection,\nso do not report slow YouTube as a VPN incident.\n\n2. Title: VPN Certificate Renewal Runbook, content: # VPN Certificate Renewal Runbook\n\n## Symptoms\n- VPN client connections failing with \"TLS handshake failed\"\n- Users reporting \"certificate has expired\" or \"SSL_ERROR_EXPIRED_CERT_ALERT\"\n- OpenVPN/WireGuard logs showing TLS negotiation failures\n- Spike in helpdesk tickets from remote employees unable to connect\n\n## Diagnosis\n\n### Step 1: Check certificate expiration date\n```bash\nopenssl x509 -in /etc/openvpn/server.crt -noout -dates\n```\n\nLook for notAfter \u2014 if this date is in the past, the certificate has expired.\n\n### Step 2: Verify certificate chain\n```bash\nopenssl verify -CAfile /etc/openvpn/ca.crt /etc/openvpn/server.crt\n```\n\n### Step 3: Check certbot renewal status\n```bash\ncertbot certificates --domain vpn.company.internal\n```\n\n## Resolution\n### Immediate: Renew certificate manually\n```bash\ncertbot renew --cert-name vpn.company.internal --force-renewal\n```\n\n### Restart VPN service to load new certificate\n```bash\nsystemctl restart openvpn@server\n```\n\n### Verify new certificate is loaded\n```bash\nopenssl s_client -connect vpn.company.internal:443 2>/dev/null | openssl x509 -noout -dates\n```\n\n### Prevent recurrence: Enable auto-renewal\n```bash\n# Add to crontab\necho \"0 3 * * * certbot renew --quiet --post-hook 'systemctl restart openvpn@server'\" | crontab -\n```\n\n## Escalation\n- If certificate cannot be renewed (CA issues): page infrastructure security team\n- If VPN service does not restart after renewal: see VPN Gateway Recovery Runbook\n\n3. Title: Certificate Renewal Policy, content: # Certificate Renewal Policy\n\n## Purpose\nRules governing TLS certificate lifetimes and renewal across\ninfrastructure. This is the policy of record \u2014 for an already-expired\ncertificate breaking connections, execute the VPN Certificate Renewal\nRunbook immediately and file the policy review afterwards.\n\n## Lifetime rules\n- Public-facing TLS certificates: 90-day lifetime, auto-renewed via\n  ACME at two-thirds of lifetime.\n- Internal service certificates: 1-year lifetime, auto-renewed by the\n  internal CA.\n- VPN gateway certificates: 1-year lifetime. Renewal is MANUAL until\n  the gateway appliance supports ACME \u2014 this exception is the reason\n  the VPN runbook exists.\n\n## Monitoring requirements\nEvery certificate must be registered in the expiry dashboard. Alerts\nfire at 30, 14, and 7 days before expiry to the owning team's\nchannel. An expired production certificate is automatically a SEV-2.\n\n## Ownership\nEach certificate has a named owning team. Certificates without an\nowner are treated as policy violations and escalated at the quarterly\nreview.\n\n## Manual renewals\nAny certificate that cannot auto-renew must have a documented runbook\nand a calendar reminder at 30 days before expiry, reviewed quarterly.\n\n4. Title: Payment Service DB Connection Pool Troubleshooting, content: # Payment Service DB Connection Pool Troubleshooting\n\n## Symptoms\n- Timeout errors in payment-service logs: \"connection pool exhausted\"\n- PostgreSQL logs showing \"FATAL: remaining connection slots are reserved\"\n- Elevated 503 error rate on /api/v1/checkout and /api/v1/payments endpoints\n- pg_stat_activity shows connections near max_connections limit\n\n## Diagnosis\n\n### Step 1: Check current connection count\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'payments'\"\n```\n\n### Step 2: Identify long-running queries holding connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE datname = 'payments' AND state != 'idle' ORDER BY duration DESC LIMIT 10\"\n```\n\n### Step 3: Check application pool configuration\n```bash\nkubectl exec -it deployment/payment-service -- cat /app/config/db.yaml | grep pool\n```\n\nExpected: pool_size=20, max_overflow=10, pool_timeout=30\n\n## Resolution\n### Immediate: Kill idle connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'payments' AND state = 'idle' AND query_start < now() - interval '5 minutes'\"\n```\n\n### Short-term: Restart pods to reset connection pools\n```bash\nkubectl rollout restart deployment/payment-service -n production\n```\n\n### Long-term: Tune pool settings\nIf recurring, increase pool_size in deployment config and consider PgBouncer for connection pooling at the infrastructure level.\n\n## Escalation\n- If connections do not drop after pod restart: page DBA team\n- If PostgreSQL itself is unresponsive: see Database Failover Runbook\n\n5. Title: API Gateway Rate Limit Configuration, content: # API Gateway Rate Limit Configuration\n\n## Symptoms\n- Customers receiving HTTP 429 Too Many Requests errors\n- Response headers showing incorrect X-RateLimit-Limit values\n- Rate limiter Redis keys showing wrong thresholds per API key\n- Customer complaints about requests being throttled below their plan tier\n\n## Diagnosis\n\n### Step 1: Check current rate limit configuration\n```bash\nkubectl exec -it deployment/api-gateway -n production -- cat /app/config/rate-limits.yaml\n```\n\nVerify tier limits match expected values:\n- Free: 50 req/s\n- Pro: 200 req/s\n- Enterprise: 500 req/s\n\n### Step 2: Check rate limit counters in Redis\n```bash\nredis-cli -h redis.internal -n 2 GET \"rate_limit:apikey:<customer-api-key>\"\nredis-cli -h redis.internal -n 2 TTL \"rate_limit:apikey:<customer-api-key>\"\n```\n\n### Step 3: Verify customer tier mapping\n```bash\ncurl -s http://api-gateway.internal:8080/admin/api-keys/<key> | jq '.tier'\n```\n\n### Step 4: Check recent config deployments\n```bash\nkubectl rollout history deployment/api-gateway -n production\ngit log --oneline -10 -- config/rate-limits.yaml\n```\n\n## Resolution\n\n### Immediate: Update rate limit config with correct tier values\n```bash\nkubectl edit configmap api-gateway-config -n production\n```\n\n###Set correct values per tier, then restart:\n```bash\nkubectl rollout restart deployment/api-gateway -n production\n```\n\n### Clear stale rate limit counters in Redis\n```bash\nredis-cli -h redis.internal -n 2 KEYS \"rate_limit:*\" | xargs redis-cli -h redis.internal -n 2 DEL\n```\n\n### Verify fix: Test with affected customer's API key\n```bash\nfor i in $(seq 1 10); do curl -s -o /dev/null -w \"%{http_code}\" -H \"X-API-Key: <key>\" https://api.company.com/v1/health; echo; done\n```\nAll responses should be 200, not 429.\n\n## Prevent recurrence\n- Add config validation in CI/CD pipeline to reject rate limit configs below tier minimums\n- Add integration test that verifies each tier gets correct rate limit headers\n- Set up alerting when enterprise customers hit 429 errors\n\n## Escalation\n- If rate limits cannot",
+        "answer": "If all remote employees are unable to connect to the VPN at once, it is likely an incident, possibly due to an expired gateway certificate. You should start by checking the status page for any reported incidents. If it indicates a certificate issue, refer to the VPN Certificate Renewal Runbook to diagnose and resolve the problem, particularly checking the certificate expiration date and renewing it if necessary [1][2]."
+      },
+      "score": {
+        "case_id": "hybrid-vpn-allremote-14",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 0.5,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-vpn-allremote-14",
+        "faithfulness": 5,
+        "relevance": 4,
+        "reasoning": "The answer is fully faithful as it accurately reflects the context, mentioning the possibility of an expired gateway certificate and referring to the VPN Certificate Renewal Runbook. However, it is slightly less relevant because it does not explicitly mention restarting the VPN service and verifying the new certificate, which are key actions in the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "hybrid-vpn-certpolicy-15",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "85c6f3ca-dd8c-4b05-854f-8d64194a3709",
+            0
+          ],
+          [
+            "1037007a-2830-4e92-a8f2-876b29120290",
+            0
+          ],
+          [
+            "a8f38b11-f86e-4c24-b234-073d55cda185",
+            0
+          ],
+          [
+            "cfb948c5-9e7e-42a3-be43-a594b5d17f40",
+            0
+          ]
+        ],
+        "context": "1. Title: Certificate Renewal Policy, content: # Certificate Renewal Policy\n\n## Purpose\nRules governing TLS certificate lifetimes and renewal across\ninfrastructure. This is the policy of record \u2014 for an already-expired\ncertificate breaking connections, execute the VPN Certificate Renewal\nRunbook immediately and file the policy review afterwards.\n\n## Lifetime rules\n- Public-facing TLS certificates: 90-day lifetime, auto-renewed via\n  ACME at two-thirds of lifetime.\n- Internal service certificates: 1-year lifetime, auto-renewed by the\n  internal CA.\n- VPN gateway certificates: 1-year lifetime. Renewal is MANUAL until\n  the gateway appliance supports ACME \u2014 this exception is the reason\n  the VPN runbook exists.\n\n## Monitoring requirements\nEvery certificate must be registered in the expiry dashboard. Alerts\nfire at 30, 14, and 7 days before expiry to the owning team's\nchannel. An expired production certificate is automatically a SEV-2.\n\n## Ownership\nEach certificate has a named owning team. Certificates without an\nowner are treated as policy violations and escalated at the quarterly\nreview.\n\n## Manual renewals\nAny certificate that cannot auto-renew must have a documented runbook\nand a calendar reminder at 30 days before expiry, reviewed quarterly.\n\n2. Title: VPN Access FAQ, content: # VPN Access FAQ\n\n## I can't connect to the VPN. Is it broken?\nCheck the status page first. If only YOU are affected, it is almost\nalways local: wrong password, expired MFA enrollment, or a stale\nclient. If EVERYONE is failing to connect at once, that is an incident\n\u2014 typically an expired gateway certificate; see the VPN Certificate\nRenewal Runbook.\n\n## The VPN was just fixed but I still can't connect.\nYour client may have cached the old certificate. Restart the VPN\nclient to clear its cache before reporting a problem.\n\n## Why was I disconnected after 8 hours?\nSession lifetime is capped at 8 hours by policy. Reconnect and you\nwill get a fresh session.\n\n## How do I set up the VPN on a new laptop?\nInstall the client from the self-service portal and enroll the device\nin MFA. Certificates are provisioned automatically at first login \u2014\nyou never need to install one manually.\n\n## Which traffic goes through the VPN?\nSplit tunneling is enabled: only internal ranges route through the\ngateway. Streaming and general browsing use your normal connection,\nso do not report slow YouTube as a VPN incident.\n\n3. Title: VPN Certificate Renewal Runbook, content: # VPN Certificate Renewal Runbook\n\n## Symptoms\n- VPN client connections failing with \"TLS handshake failed\"\n- Users reporting \"certificate has expired\" or \"SSL_ERROR_EXPIRED_CERT_ALERT\"\n- OpenVPN/WireGuard logs showing TLS negotiation failures\n- Spike in helpdesk tickets from remote employees unable to connect\n\n## Diagnosis\n\n### Step 1: Check certificate expiration date\n```bash\nopenssl x509 -in /etc/openvpn/server.crt -noout -dates\n```\n\nLook for notAfter \u2014 if this date is in the past, the certificate has expired.\n\n### Step 2: Verify certificate chain\n```bash\nopenssl verify -CAfile /etc/openvpn/ca.crt /etc/openvpn/server.crt\n```\n\n### Step 3: Check certbot renewal status\n```bash\ncertbot certificates --domain vpn.company.internal\n```\n\n## Resolution\n### Immediate: Renew certificate manually\n```bash\ncertbot renew --cert-name vpn.company.internal --force-renewal\n```\n\n### Restart VPN service to load new certificate\n```bash\nsystemctl restart openvpn@server\n```\n\n### Verify new certificate is loaded\n```bash\nopenssl s_client -connect vpn.company.internal:443 2>/dev/null | openssl x509 -noout -dates\n```\n\n### Prevent recurrence: Enable auto-renewal\n```bash\n# Add to crontab\necho \"0 3 * * * certbot renew --quiet --post-hook 'systemctl restart openvpn@server'\" | crontab -\n```\n\n## Escalation\n- If certificate cannot be renewed (CA issues): page infrastructure security team\n- If VPN service does not restart after renewal: see VPN Gateway Recovery Runbook\n\n4. Title: API Rate Limit Tier Policy, content: # API Rate Limit Tier Policy\n\n## Purpose\nDefines which request limits apply to which API clients. This is the\npolicy of record \u2014 for diagnosing legitimate requests being rejected\nwith 429 errors, see the API Gateway Rate Limit Configuration runbook.\n\n## Tiers\n- Free tier: 60 requests per minute, burst up to 100. No SLA.\n- Standard tier: 600 requests per minute, burst up to 1,000.\n- Enterprise tier: negotiated per contract; floor of 6,000 requests\n  per minute with dedicated gateway capacity.\n\n## Enforcement\nLimits are enforced per API key using a sliding-window counter at the\ngateway. Exceeding the window returns HTTP 429 with a Retry-After\nheader. Repeated abuse (10x the tier limit) triggers a temporary key\nsuspension and a notification to the account owner.\n\n## Changing a client's tier\nTier assignment is owned by the client's account manager. Upgrades\nrequire a capacity review by the platform team before the new limit is\napplied at the gateway. Emergency limit raises during an incident must\nbe reverted or formalized within five business days.\n\n## Review\nThis policy is reviewed quarterly against gateway capacity reports.\n",
+        "answer": "The certificate lifetime for VPN gateway certificates is 1 year. The renewal process is MANUAL until the gateway appliance supports ACME, which is the reason the VPN Certificate Renewal Runbook exists [1]."
+      },
+      "score": {
+        "case_id": "hybrid-vpn-certpolicy-15",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "hybrid-vpn-certpolicy-15",
+        "faithfulness": 5,
+        "relevance": 3,
+        "reasoning": "The answer is fully faithful as it accurately states the 1-year lifetime and manual renewal process for VPN gateway certificates, as supported by the context. However, it is incomplete in relevance because it omits the information about an expired production certificate being automatically a SEV-2, which is a key part of the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "sqlcount-total-01",
+        "predicted_route": "sql",
+        "actual_route": "sql",
+        "retrieved": [],
+        "context": "There are 12 tickets.",
+        "answer": "There are 12 tickets."
+      },
+      "score": {
+        "case_id": "sqlcount-total-01",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": true,
+        "mentions_ok": null
+      },
+      "judge": null
+    },
+    {
+      "result": {
+        "case_id": "sqlcount-open-02",
+        "predicted_route": "sql",
+        "actual_route": "sql",
+        "retrieved": [],
+        "context": "There are 4 tickets with status: open.",
+        "answer": "There are 4 tickets with status: open."
+      },
+      "score": {
+        "case_id": "sqlcount-open-02",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": true,
+        "mentions_ok": null
+      },
+      "judge": null
+    },
+    {
+      "result": {
+        "case_id": "sqlcount-inprogress-03",
+        "predicted_route": "sql",
+        "actual_route": "sql",
+        "retrieved": [],
+        "context": "There are 2 tickets with status: in_progress.",
+        "answer": "There are 2 tickets with status: in_progress."
+      },
+      "score": {
+        "case_id": "sqlcount-inprogress-03",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": true,
+        "mentions_ok": null
+      },
+      "judge": null
+    },
+    {
+      "result": {
+        "case_id": "sqlcount-p1-04",
+        "predicted_route": "sql",
+        "actual_route": "sql",
+        "retrieved": [],
+        "context": "There are 2 tickets with priority: p1.",
+        "answer": "There are 2 tickets with priority: p1."
+      },
+      "score": {
+        "case_id": "sqlcount-p1-04",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": true,
+        "mentions_ok": null
+      },
+      "judge": null
+    },
+    {
+      "result": {
+        "case_id": "sqlcount-service-payment-05",
+        "predicted_route": "sql",
+        "actual_route": "sql",
+        "retrieved": [],
+        "context": "There are 3 tickets with service: payment-service.",
+        "answer": "There are 3 tickets with service: payment-service."
+      },
+      "score": {
+        "case_id": "sqlcount-service-payment-05",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": true,
+        "mentions_ok": null
+      },
+      "judge": null
+    },
+    {
+      "result": {
+        "case_id": "sqlcount-open-payment-06",
+        "predicted_route": "sql",
+        "actual_route": "sql",
+        "retrieved": [],
+        "context": "There are 2 tickets with status: open, service: payment-service.",
+        "answer": "There are 2 tickets with status: open, service: payment-service."
+      },
+      "score": {
+        "case_id": "sqlcount-open-payment-06",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": true,
+        "mentions_ok": null
+      },
+      "judge": null
+    },
+    {
+      "result": {
+        "case_id": "sqlcount-recent7-07",
+        "predicted_route": "sql",
+        "actual_route": "sql",
+        "retrieved": [],
+        "context": "There are 2 tickets with status: open, since 2026-05-25, until 2026-06-01.",
+        "answer": "There are 2 tickets with status: open, since 2026-05-25, until 2026-06-01."
+      },
+      "score": {
+        "case_id": "sqlcount-recent7-07",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": false,
+        "mentions_ok": null
+      },
+      "judge": null
+    },
+    {
+      "result": {
+        "case_id": "sqlcount-recent30-08",
+        "predicted_route": "sql",
+        "actual_route": "sql",
+        "retrieved": [],
+        "context": "There are 7 tickets with since 2026-05-02, until 2026-06-01.",
+        "answer": "There are 7 tickets with since 2026-05-02, until 2026-06-01."
+      },
+      "score": {
+        "case_id": "sqlcount-recent30-08",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": true,
+        "mentions_ok": null
+      },
+      "judge": null
+    },
+    {
+      "result": {
+        "case_id": "sqllist-open-09",
+        "predicted_route": "sql",
+        "actual_route": "sql",
+        "retrieved": [],
+        "context": "There are 4 tickets:\n1. [p1] payment-service eval ticket 0 - payment-service (open, 2026-05-30)\n2. [p3] api-gateway eval ticket 1 - api-gateway (open, 2026-05-28)\n3. [p2] payment-service eval ticket 3 - payment-service (open, 2026-05-20)\n4. [p4] auth-service eval ticket 5 - auth-service (open, 2026-05-10)",
+        "answer": "There are 4 open tickets:\n1. [p1] payment-service eval ticket 0 - payment-service (open, 2026-05-30)\n2. [p3] api-gateway eval ticket 1 - api-gateway (open, 2026-05-28)\n3. [p2] payment-service eval ticket 3 - payment-service (open, 2026-05-20)\n4. [p4] auth-service eval ticket 5 - auth-service (open, 2026-05-10)"
+      },
+      "score": {
+        "case_id": "sqllist-open-09",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": true,
+        "mentions_ok": true
+      },
+      "judge": null
+    },
+    {
+      "result": {
+        "case_id": "sqllist-p2-10",
+        "predicted_route": "sql",
+        "actual_route": "sql",
+        "retrieved": [],
+        "context": "There are 4 tickets:\n1. [p2] auth-service eval ticket 2 - auth-service (in_progress, 2026-05-26)\n2. [p2] payment-service eval ticket 3 - payment-service (open, 2026-05-20)\n3. [p2] api-gateway eval ticket 6 - api-gateway (resolved, 2026-05-04)\n4. [p2] infra-vpn eval ticket 8 - infra-vpn (closed, 2026-04-22)",
+        "answer": "There are 4 tickets:\n1. [p2] auth-service eval ticket 2 - auth-service (in_progress, 2026-05-26)\n2. [p2] payment-service eval ticket 3 - payment-service (open, 2026-05-20)\n3. [p2] api-gateway eval ticket 6 - api-gateway (resolved, 2026-05-04)\n4. [p2] infra-vpn eval ticket 8 - infra-vpn (closed, 2026-04-22)"
+      },
+      "score": {
+        "case_id": "sqllist-p2-10",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": true,
+        "mentions_ok": true
+      },
+      "judge": null
+    },
+    {
+      "result": {
+        "case_id": "clarify-vague-01",
+        "predicted_route": "clarify",
+        "actual_route": "clarify",
+        "retrieved": [],
+        "context": "Could you provide more details about what is broken? I can help with ticket counts, lists, or search documentation.",
+        "answer": "The context does not provide information about why something is broken."
+      },
+      "score": {
+        "case_id": "clarify-vague-01",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": null,
+        "mentions_ok": null
+      },
+      "judge": null
+    },
+    {
+      "result": {
+        "case_id": "clarify-help-02",
+        "predicted_route": "clarify",
+        "actual_route": "clarify",
+        "retrieved": [],
+        "context": "Could you provide more details about the issue? I can assist with ticket counts, lists, or documentation.",
+        "answer": "Could you provide more details about the issue? I can assist with ticket counts, lists, or documentation."
+      },
+      "score": {
+        "case_id": "clarify-help-02",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": null,
+        "mentions_ok": null
+      },
+      "judge": null
+    },
+    {
+      "result": {
+        "case_id": "adversarial-nocontext-01",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "36e50a3c-4f7d-4aca-be58-bfbe1863e482",
+            1
+          ]
+        ],
+        "context": "1. Title: API Gateway Rate Limit Configuration, content: /CD pipeline to reject rate limit configs below tier minimums\n- Add integration test that verifies each tier gets correct rate limit headers\n- Set up alerting when enterprise customers hit 429 errors\n\n## Escalation\n- If rate limits cannot be updated via config: page api-gateway team lead\n- If Redis is unresponsive: see Redis Cluster Troubleshooting Runbook\n",
+        "answer": "The provided context does not contain any information about a Kafka consumer lag runbook."
+      },
+      "score": {
+        "case_id": "adversarial-nocontext-01",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": null,
+        "mentions_ok": null
+      },
+      "judge": {
+        "case_id": "adversarial-nocontext-01",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately states that the context lacks information about a Kafka consumer lag runbook. It is also fully relevant because it directly addresses the question by acknowledging the absence of the needed documentation, aligning with the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "adversarial-servicename-02",
+        "predicted_route": "sql",
+        "actual_route": "sql",
+        "retrieved": [],
+        "context": "There are 3 tickets with service: payment-service.",
+        "answer": "There are 3 tickets with service: payment-service."
+      },
+      "score": {
+        "case_id": "adversarial-servicename-02",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": null,
+        "precision": null,
+        "rr": null,
+        "sql_ok": true,
+        "mentions_ok": null
+      },
+      "judge": null
+    },
+    {
+      "result": {
+        "case_id": "adversarial-wrongstore-03",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "40c50a1b-ae61-4c7a-a183-562daf0be5d5",
+            0
+          ],
+          [
+            "cff4d1a6-9ea2-43f8-b3da-cf44f44f6130",
+            0
+          ],
+          [
+            "36e50a3c-4f7d-4aca-be58-bfbe1863e482",
+            1
+          ],
+          [
+            "441da168-edb6-4f75-b232-b95f0522a60e",
+            0
+          ],
+          [
+            "a8f38b11-f86e-4c24-b234-073d55cda185",
+            0
+          ]
+        ],
+        "context": "1. Title: Payment Service DB Connection Pool Troubleshooting, content: # Payment Service DB Connection Pool Troubleshooting\n\n## Symptoms\n- Timeout errors in payment-service logs: \"connection pool exhausted\"\n- PostgreSQL logs showing \"FATAL: remaining connection slots are reserved\"\n- Elevated 503 error rate on /api/v1/checkout and /api/v1/payments endpoints\n- pg_stat_activity shows connections near max_connections limit\n\n## Diagnosis\n\n### Step 1: Check current connection count\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'payments'\"\n```\n\n### Step 2: Identify long-running queries holding connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE datname = 'payments' AND state != 'idle' ORDER BY duration DESC LIMIT 10\"\n```\n\n### Step 3: Check application pool configuration\n```bash\nkubectl exec -it deployment/payment-service -- cat /app/config/db.yaml | grep pool\n```\n\nExpected: pool_size=20, max_overflow=10, pool_timeout=30\n\n## Resolution\n### Immediate: Kill idle connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'payments' AND state = 'idle' AND query_start < now() - interval '5 minutes'\"\n```\n\n### Short-term: Restart pods to reset connection pools\n```bash\nkubectl rollout restart deployment/payment-service -n production\n```\n\n### Long-term: Tune pool settings\nIf recurring, increase pool_size in deployment config and consider PgBouncer for connection pooling at the infrastructure level.\n\n## Escalation\n- If connections do not drop after pod restart: page DBA team\n- If PostgreSQL itself is unresponsive: see Database Failover Runbook\n\n2. Title: Database Connection Pool Sizing Guide, content: # Database Connection Pool Sizing Guide\n\n## Purpose\nHow to choose connection pool settings for services that talk to PostgreSQL.\nThis is a design-time guide \u2014 for diagnosing an active pool-exhaustion\nincident, see the Payment Service DB Connection Pool Troubleshooting runbook.\n\n## Sizing rules\n- Start from measured load: pool_size \u2248 peak requests per second \u00d7 average\n  query duration in seconds, rounded up. Do not guess.\n- Set max_overflow to 25\u201350% of pool_size to absorb short bursts.\n- pool_timeout controls how long a request waits for a free connection\n  before failing; keep it below your upstream request timeout.\n- The sum of pool_size + max_overflow across ALL replicas must stay under\n  PostgreSQL max_connections, with ~20% headroom reserved for admin\n  sessions and migrations.\n\n## Worked example\npayment-service at 300 rps peak with 40 ms average query time keeps ~12\nconnections busy. pool_size=20, max_overflow=10 covers bursts while three\nreplicas stay within a max_connections of 120.\n\n## When to revisit\nRe-run the sizing math after adding replicas, when query latency grows, or\nwhen total demand approaches max_connections \u2014 at that point consider\nPgBouncer instead of ever-larger pools.\n\n3. Title: API Gateway Rate Limit Configuration, content: /CD pipeline to reject rate limit configs below tier minimums\n- Add integration test that verifies each tier gets correct rate limit headers\n- Set up alerting when enterprise customers hit 429 errors\n\n## Escalation\n- If rate limits cannot be updated via config: page api-gateway team lead\n- If Redis is unresponsive: see Redis Cluster Troubleshooting Runbook\n\n4. Title: Auth Service Memory Troubleshooting, content: # Auth Service Memory Troubleshooting\n\n## Symptoms\n- Kubernetes pods restarting with reason \"OOMKilled\" and exit code 137\n- Container memory usage growing linearly over time without stabilizing\n- Increased login failures and 502 errors during pod restarts\n- Grafana memory dashboard showing sawtooth pattern (gradual rise, sudden drop)\n\n## Diagnosis\n\n### Step 1: Check pod restart history and OOM events\n```bash\nkubectl get pods -n production -l app=auth-service -o wide\nkubectl describe pod <pod-name> -n production | grep -A 5 \"Last State\"\n```\n\n### Step 2: Monitor real-time memory usage\n```bash\nkubectl top pods -n production -l app=auth-service\n```\n\nRun this every 30 seconds to observe the growth pattern.\n\n### Step 3: Capture heap dump before OOM\n```bash\nkubectl exec -it <pod-name> -n production -- jmap -dump:format=b,file=/tmp/heap.hprof 1\nkubectl cp production/<pod-name>:/tmp/heap.hprof ./heap.hprof\n```\n\n### Step 4: Check JVM or runtime memory settings\n```bash\nkubectl exec -it <pod-name> -n production -- env | grep -i memory\nkubectl get deployment auth-service -n production -o jsonpath='{.spec.template.spec.containers[0].resources}'\n```\n\n## Resolution\n\n### Immediate: Increase memory limit to buy time\n```bash\nkubectl set resources deployment/auth-service -n production --limits=memory=1Gi\n```\n\n### Short-term: Restart pods on a schedule to prevent OOM\n```bash\nkubectl rollout restart deployment/auth-service -n production\n```\n\n### Long-term: Fix the memory leak\nReview session cache eviction policy \u2014 ensure expired JWT tokens are removed\nAdd TTL-based eviction to in-memory cache\nConsider moving session cache to Redis instead of in-process memory\n\n## Escalation\n- If heap dump shows leak outside application code: page platform engineering team\n- If login success rate drops below 50%: escalate to P1\n\n5. Title: VPN Certificate Renewal Runbook, content: # VPN Certificate Renewal Runbook\n\n## Symptoms\n- VPN client connections failing with \"TLS handshake failed\"\n- Users reporting \"certificate has expired\" or \"SSL_ERROR_EXPIRED_CERT_ALERT\"\n- OpenVPN/WireGuard logs showing TLS negotiation failures\n- Spike in helpdesk tickets from remote employees unable to connect\n\n## Diagnosis\n\n### Step 1: Check certificate expiration date\n```bash\nopenssl x509 -in /etc/openvpn/server.crt -noout -dates\n```\n\nLook for notAfter \u2014 if this date is in the past, the certificate has expired.\n\n### Step 2: Verify certificate chain\n```bash\nopenssl verify -CAfile /etc/openvpn/ca.crt /etc/openvpn/server.crt\n```\n\n### Step 3: Check certbot renewal status\n```bash\ncertbot certificates --domain vpn.company.internal\n```\n\n## Resolution\n### Immediate: Renew certificate manually\n```bash\ncertbot renew --cert-name vpn.company.internal --force-renewal\n```\n\n### Restart VPN service to load new certificate\n```bash\nsystemctl restart openvpn@server\n```\n\n### Verify new certificate is loaded\n```bash\nopenssl s_client -connect vpn.company.internal:443 2>/dev/null | openssl x509 -noout -dates\n```\n\n### Prevent recurrence: Enable auto-renewal\n```bash\n# Add to crontab\necho \"0 3 * * * certbot renew --quiet --post-hook 'systemctl restart openvpn@server'\" | crontab -\n```\n\n## Escalation\n- If certificate cannot be renewed (CA issues): page infrastructure security team\n- If VPN service does not restart after renewal: see VPN Gateway Recovery Runbook\n",
+        "answer": "Here are the connection pool troubleshooting steps:\n\n### Step 1: Check current connection count\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'payments'\"\n```\n\n### Step 2: Identify long-running queries holding connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE datname = 'payments' AND state != 'idle' ORDER BY duration DESC LIMIT 10\"\n```\n\n### Step 3: Check application pool configuration\n```bash\nkubectl exec -it deployment/payment-service -- cat /app/config/db.yaml | grep pool\n```\nExpected: pool_size=20, max_overflow=10, pool_timeout=30\n\n### Resolution\n#### Immediate: Kill idle connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'payments' AND state = 'idle' AND query_start < now() - interval '5 minutes'\"\n```\n\n#### Short-term: Restart pods to reset connection pools\n```bash\nkubectl rollout restart deployment/payment-service -n production\n```\n\n#### Long-term: Tune pool settings\nIf recurring, increase pool_size in deployment config and consider PgBouncer for connection pooling at the infrastructure level."
+      },
+      "score": {
+        "case_id": "adversarial-wrongstore-03",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "adversarial-wrongstore-03",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately reflects the steps and commands provided in the retrieved context. It is also fully relevant, as it directly addresses the question by listing the connection pool troubleshooting steps, including killing idle connections, restarting pods, and tuning pool settings, which matches the reference answer."
+      }
+    },
+    {
+      "result": {
+        "case_id": "adversarial-paraphrase-04",
+        "predicted_route": "hybrid",
+        "actual_route": "hybrid",
+        "retrieved": [
+          [
+            "441da168-edb6-4f75-b232-b95f0522a60e",
+            0
+          ],
+          [
+            "40c50a1b-ae61-4c7a-a183-562daf0be5d5",
+            0
+          ]
+        ],
+        "context": "1. Title: Auth Service Memory Troubleshooting, content: # Auth Service Memory Troubleshooting\n\n## Symptoms\n- Kubernetes pods restarting with reason \"OOMKilled\" and exit code 137\n- Container memory usage growing linearly over time without stabilizing\n- Increased login failures and 502 errors during pod restarts\n- Grafana memory dashboard showing sawtooth pattern (gradual rise, sudden drop)\n\n## Diagnosis\n\n### Step 1: Check pod restart history and OOM events\n```bash\nkubectl get pods -n production -l app=auth-service -o wide\nkubectl describe pod <pod-name> -n production | grep -A 5 \"Last State\"\n```\n\n### Step 2: Monitor real-time memory usage\n```bash\nkubectl top pods -n production -l app=auth-service\n```\n\nRun this every 30 seconds to observe the growth pattern.\n\n### Step 3: Capture heap dump before OOM\n```bash\nkubectl exec -it <pod-name> -n production -- jmap -dump:format=b,file=/tmp/heap.hprof 1\nkubectl cp production/<pod-name>:/tmp/heap.hprof ./heap.hprof\n```\n\n### Step 4: Check JVM or runtime memory settings\n```bash\nkubectl exec -it <pod-name> -n production -- env | grep -i memory\nkubectl get deployment auth-service -n production -o jsonpath='{.spec.template.spec.containers[0].resources}'\n```\n\n## Resolution\n\n### Immediate: Increase memory limit to buy time\n```bash\nkubectl set resources deployment/auth-service -n production --limits=memory=1Gi\n```\n\n### Short-term: Restart pods on a schedule to prevent OOM\n```bash\nkubectl rollout restart deployment/auth-service -n production\n```\n\n### Long-term: Fix the memory leak\nReview session cache eviction policy \u2014 ensure expired JWT tokens are removed\nAdd TTL-based eviction to in-memory cache\nConsider moving session cache to Redis instead of in-process memory\n\n## Escalation\n- If heap dump shows leak outside application code: page platform engineering team\n- If login success rate drops below 50%: escalate to P1\n\n2. Title: Payment Service DB Connection Pool Troubleshooting, content: # Payment Service DB Connection Pool Troubleshooting\n\n## Symptoms\n- Timeout errors in payment-service logs: \"connection pool exhausted\"\n- PostgreSQL logs showing \"FATAL: remaining connection slots are reserved\"\n- Elevated 503 error rate on /api/v1/checkout and /api/v1/payments endpoints\n- pg_stat_activity shows connections near max_connections limit\n\n## Diagnosis\n\n### Step 1: Check current connection count\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT count(*) FROM pg_stat_activity WHERE datname = 'payments'\"\n```\n\n### Step 2: Identify long-running queries holding connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE datname = 'payments' AND state != 'idle' ORDER BY duration DESC LIMIT 10\"\n```\n\n### Step 3: Check application pool configuration\n```bash\nkubectl exec -it deployment/payment-service -- cat /app/config/db.yaml | grep pool\n```\n\nExpected: pool_size=20, max_overflow=10, pool_timeout=30\n\n## Resolution\n### Immediate: Kill idle connections\n```bash\npsql -h payment-db.internal -U admin -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'payments' AND state = 'idle' AND query_start < now() - interval '5 minutes'\"\n```\n\n### Short-term: Restart pods to reset connection pools\n```bash\nkubectl rollout restart deployment/payment-service -n production\n```\n\n### Long-term: Tune pool settings\nIf recurring, increase pool_size in deployment config and consider PgBouncer for connection pooling at the infrastructure level.\n\n## Escalation\n- If connections do not drop after pod restart: page DBA team\n- If PostgreSQL itself is unresponsive: see Database Failover Runbook\n",
+        "answer": "To address the issue of your sign-in system running out of RAM and getting killed, you can follow these steps:\n\n### Immediate Action\n1. **Increase Memory Limit**: This will help buy some time while you investigate further.\n   ```bash\n   kubectl set resources deployment/auth-service -n production --limits=memory=1Gi\n   ```\n\n### Short-term Solution\n2. **Restart Pods on a Schedule**: This can help prevent OOM (Out of Memory) issues temporarily.\n   ```bash\n   kubectl rollout restart deployment/auth-service -n production\n   ```\n\n### Long-term Fix\n3. **Fix the Memory Leak**: \n   - Review the session cache eviction policy to ensure expired JWT tokens are removed.\n   - Add TTL-based eviction to the in-memory cache.\n   - Consider moving the session cache to Redis instead of keeping it in-process memory.\n\n### Diagnosis Steps\n- Check pod restart history and OOM events to understand the issue better:\n   ```bash\n   kubectl get pods -n production -l app=auth-service -o wide\n   kubectl describe pod <pod-name> -n production | grep -A 5 \"Last State\"\n   ```\n- Monitor real-time memory usage:\n   ```bash\n   kubectl top pods -n production -l app=auth-service\n   ```\n- Capture a heap dump before the OOM event to analyze memory usage:\n   ```bash\n   kubectl exec -it <pod-name> -n production -- jmap -dump:format=b,file=/tmp/heap.hprof 1\n   kubectl cp production/<pod-name>:/tmp/heap.hprof ./heap.hprof\n   ```\n\nBy following these steps, you should be able to mitigate the RAM issues with your sign-in system."
+      },
+      "score": {
+        "case_id": "adversarial-paraphrase-04",
+        "route_ok": true,
+        "route_diverged": false,
+        "recall": 1.0,
+        "precision": 0.2,
+        "rr": 1.0,
+        "sql_ok": null,
+        "mentions_ok": true
+      },
+      "judge": {
+        "case_id": "adversarial-paraphrase-04",
+        "faithfulness": 5,
+        "relevance": 5,
+        "reasoning": "The answer is fully faithful as it accurately reflects the steps and solutions provided in the retrieved context, including increasing memory limits, restarting pods, and addressing memory leaks. It is also fully relevant, as it directly addresses the question by providing immediate, short-term, and long-term solutions to the RAM issue, covering all key actions mentioned in the reference answer."
+      }
+    }
+  ]
+}

@@ -6,12 +6,12 @@ Returns a QueryIntent with route, confidence, and route-specific data.
 
 import os
 import time
-from datetime import UTC, datetime
 
 import openai
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import ValidationError
 
+from incident_intel.core.clock import today_str
 from incident_intel.core.logging import get_logger
 from incident_intel.schemas.classification import QueryIntent
 
@@ -39,7 +39,7 @@ You have to choose which of these three routes should each user query be sent:
    - `sql` — quantitative ticket questions (counts, lists with filters),
    - `hybrid` — documentation, how-to, troubleshooting questions,
    - `clarify` — ambiguous or too vague to classify.
-Today's date is {datetime.now(UTC).strftime("%Y-%m-%d")}.
+Today's date is {today_str()}.
 Return all datetimes in UTC ISO format (e.g., 2026-03-02T00:00:00Z).
 All date filters apply to ticket creation date only.
 'limit' must be between 1 and 100.

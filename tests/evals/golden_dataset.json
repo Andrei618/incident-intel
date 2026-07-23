@@ -1,0 +1,335 @@
+{
+  "dataset_version": "1.0",
+  "eval_today": "2026-06-01",
+  "cases": [
+    {
+      "id": "hybrid-payment-pool-01",
+      "category": "hybrid",
+      "question": "payment service connection pool exhausted",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "payment-db-pool-runbook", "chunk_index": 0, "content_sha256": "b0a62b725c6b6efe1d1a458ec02f816e0bab50bbd54f7a11ce0b9cd47093fdba"}
+      ],
+      "reference_answer": "Kill idle connections holding slots, restart the payment-service pods to reset the pools, and if it recurs increase pool_size or introduce PgBouncer per the connection-pool runbook.",
+      "must_mention": ["pool"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "hybrid-payment-checkout503-02",
+      "category": "hybrid",
+      "question": "The checkout API keeps returning 503s and the payments database seems to be running out of connections. What should I do?",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "payment-db-pool-runbook", "chunk_index": 0, "content_sha256": "b0a62b725c6b6efe1d1a458ec02f816e0bab50bbd54f7a11ce0b9cd47093fdba"}
+      ],
+      "reference_answer": "This is connection pool exhaustion: kill idle connections, restart the payment-service pods to reset the pools, and tune pool_size or add PgBouncer if it recurs.",
+      "must_mention": ["pool"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "hybrid-payment-sizing-03",
+      "category": "hybrid",
+      "question": "How should I choose the connection pool size for a new service?",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "payment-db-pool-sizing-guide", "chunk_index": 0, "content_sha256": "02e353801a2536de873874233b61902baa5e96440df7861c1b69a0f7cb223594"}
+      ],
+      "reference_answer": "Size the pool from measured load (peak RPS times average query seconds), set max_overflow to 25-50% of pool_size, and keep pool_size plus max_overflow across all replicas under PostgreSQL max_connections with headroom.",
+      "must_mention": ["pool_size"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "hybrid-gateway-429-04",
+      "category": "hybrid",
+      "question": "customers getting 429 too many requests wrong tier",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "api-gateway-rate-limit-runbook", "chunk_index": 0, "content_sha256": "833b69c344c4a83246bc3fb258e5a6a96ceb80bd7b10560dd6e12f325632f07d"}
+      ],
+      "reference_answer": "Check the rate-limit config and per-tier values, correct the tier limits in the configmap, restart the gateway, and clear stale Redis rate-limit counters.",
+      "must_mention": ["tier"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "hybrid-gateway-throttle-05",
+      "category": "hybrid",
+      "question": "Enterprise customers are being throttled even though they are within their plan. How do I fix the gateway config?",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "api-gateway-rate-limit-runbook", "chunk_index": 0, "content_sha256": "833b69c344c4a83246bc3fb258e5a6a96ceb80bd7b10560dd6e12f325632f07d"},
+        {"doc_key": "api-gateway-rate-limit-runbook", "chunk_index": 1, "content_sha256": "44124afafd4151c6701aeb5649699b034646089b19ea949a99908e355b75397b"}
+      ],
+      "reference_answer": "Verify the enterprise tier's configured limit, correct the rate-limit config and restart the gateway, then clear the stale Redis counters and confirm the customer's key returns 200s.",
+      "must_mention": ["rate limit"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "hybrid-gateway-tierlimits-06",
+      "category": "hybrid",
+      "question": "What are the request-per-minute limits for each API tier?",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "api-gateway-rate-limit-tier-policy", "chunk_index": 0, "content_sha256": "a47b4cb6daef20c27518d7aaf33b21424d38d10a778e092cd566f0560f587c51"}
+      ],
+      "reference_answer": "Free tier is 60 requests/minute (burst 100), standard is 600/minute (burst 1,000), and enterprise is a negotiated floor of 6,000/minute.",
+      "must_mention": ["enterprise"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "hybrid-auth-oom-07",
+      "category": "hybrid",
+      "question": "auth service pods OOMKilled",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "auth-service-memory-runbook", "chunk_index": 0, "content_sha256": "7c156cb70e602299ea4c39fdc0ccff2dd95ecbe9c35fb5875df7ec7261b08b6e"}
+      ],
+      "reference_answer": "The service is leaking memory and getting OOMKilled: restart pods to buy time, raise the memory limit short-term, and fix the leak by evicting expired sessions/JWTs or moving the session cache to Redis.",
+      "must_mention": ["memory"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "hybrid-auth-memleak-08",
+      "category": "hybrid",
+      "question": "Our login service keeps crashing and restarting, and memory climbs until it dies. How do we stop it?",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "auth-service-memory-runbook", "chunk_index": 0, "content_sha256": "7c156cb70e602299ea4c39fdc0ccff2dd95ecbe9c35fb5875df7ec7261b08b6e"}
+      ],
+      "reference_answer": "This is a memory leak causing OOMKills: restart pods short-term, raise the memory limit to buy time, and fix the leak by evicting expired sessions/JWTs or moving the session cache to Redis.",
+      "must_mention": ["memory"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "hybrid-auth-heapdump-09",
+      "category": "hybrid",
+      "question": "How do I capture and read a heap dump for a JVM service?",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "auth-memory-profiling-guide", "chunk_index": 0, "content_sha256": "87fce936bd0462dcee8b40ad693ce419b469e8ffa133db5479b44e4e3e9ac72e"}
+      ],
+      "reference_answer": "Capture a heap dump with jmap (or -XX:+HeapDumpOnOutOfMemoryError), copy it off the pod immediately, and open it in Eclipse MAT or VisualVM, reading the dominator tree for the largest retained objects.",
+      "must_mention": ["heap dump"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "hybrid-monitoring-disk-10",
+      "category": "hybrid",
+      "question": "disk space critical /var/log full",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "monitoring-disk-space-runbook", "chunk_index": 0, "content_sha256": "e0c57c4fd6fb95ade4771b237f99bf29030d7eb39d25440facfc1d80230526e8"}
+      ],
+      "reference_answer": "Identify what is filling the disk, free space by deleting old compressed logs and vacuuming the journal, fix logrotate, and clear old Elasticsearch indices.",
+      "must_mention": ["logrotate"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "hybrid-monitoring-esindex-11",
+      "category": "hybrid",
+      "question": "Our monitoring node is nearly out of disk and Elasticsearch stopped indexing. What do we do?",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "monitoring-disk-space-runbook", "chunk_index": 0, "content_sha256": "e0c57c4fd6fb95ade4771b237f99bf29030d7eb39d25440facfc1d80230526e8"}
+      ],
+      "reference_answer": "Free disk immediately (delete old logs, vacuum the journal), fix logrotate, and clear old Elasticsearch indices so it can index again.",
+      "must_mention": ["disk"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "hybrid-monitoring-rotation-12",
+      "category": "hybrid",
+      "question": "How do I add log rotation for a new log file?",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "monitoring-log-rotation-faq", "chunk_index": 0, "content_sha256": "cdbebcf720d6bb75889911c6c3beb52b34b9c1edc03d38dfe5b021d987db39c5"}
+      ],
+      "reference_answer": "Drop a logrotate config into /etc/logrotate.d/ via your deploy manifest and test it with logrotate -d (dry run) before shipping.",
+      "must_mention": ["/etc/logrotate.d"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "hybrid-vpn-cert-13",
+      "category": "hybrid",
+      "question": "VPN TLS handshake failed certificate expired",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "vpn-cert-renewal-runbook", "chunk_index": 0, "content_sha256": "7284f974ff102737389f03d07eb963683dd79037dec6b1a92e650c3f75d4327c"}
+      ],
+      "reference_answer": "The VPN certificate has expired: renew it with certbot --force-renewal, restart the VPN service to load the new cert, verify the new expiry, and enable auto-renewal.",
+      "must_mention": ["renew"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "hybrid-vpn-allremote-14",
+      "category": "hybrid",
+      "question": "All our remote employees suddenly cannot connect to the VPN this morning. Where do I start?",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "vpn-cert-renewal-runbook", "chunk_index": 0, "content_sha256": "7284f974ff102737389f03d07eb963683dd79037dec6b1a92e650c3f75d4327c"}
+      ],
+      "reference_answer": "A mass connection failure is typically an expired gateway certificate: renew it with certbot, restart the VPN service, and verify the new certificate.",
+      "must_mention": ["certificate"],
+      "difficulty": "hard"
+    },
+    {
+      "id": "hybrid-vpn-certpolicy-15",
+      "category": "hybrid",
+      "question": "What is the certificate lifetime and renewal policy for VPN gateways?",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "vpn-cert-renewal-policy", "chunk_index": 0, "content_sha256": "e45547ca530d52c899606bfe9880587f1a06d40389760f60efad04439291b42a"}
+      ],
+      "reference_answer": "VPN gateway certificates have a 1-year lifetime and are renewed manually until the appliance supports ACME; an expired production certificate is automatically a SEV-2.",
+      "must_mention": ["manual"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "sqlcount-total-01",
+      "category": "sql_count",
+      "question": "How many tickets are there in total?",
+      "expected_route": "sql",
+      "expected_count": 12,
+      "note": "COUNT(*) with no filter -> all 12 fixture tickets. Exercises the bare _format_count_result phrase.",
+      "difficulty": "easy"
+    },
+    {
+      "id": "sqlcount-open-02",
+      "category": "sql_count",
+      "question": "How many open tickets do we have?",
+      "expected_route": "sql",
+      "expected_count": 4,
+      "note": "status=open -> i=0,1,3,5.",
+      "difficulty": "easy"
+    },
+    {
+      "id": "sqlcount-inprogress-03",
+      "category": "sql_count",
+      "question": "How many tickets are currently in progress?",
+      "expected_route": "sql",
+      "expected_count": 2,
+      "note": "status=in_progress -> i=2,9.",
+      "difficulty": "easy"
+    },
+    {
+      "id": "sqlcount-p1-04",
+      "category": "sql_count",
+      "question": "How many P1 tickets are there?",
+      "expected_route": "sql",
+      "expected_count": 2,
+      "note": "priority=p1 -> i=0,7.",
+      "difficulty": "easy"
+    },
+    {
+      "id": "sqlcount-service-payment-05",
+      "category": "sql_count",
+      "question": "How many tickets does payment-service have?",
+      "expected_route": "sql",
+      "expected_count": 3,
+      "note": "JOIN services, s.name='payment-service' -> i=0,3,7.",
+      "difficulty": "medium"
+    },
+    {
+      "id": "sqlcount-open-payment-06",
+      "category": "sql_count",
+      "question": "How many open payment-service tickets are there?",
+      "expected_route": "sql",
+      "expected_count": 2,
+      "note": "s.name='payment-service' AND status=open -> i=0,3. A dropped filter yields 4 (open) or 3 (service).",
+      "difficulty": "medium"
+    },
+    {
+      "id": "sqlcount-recent7-07",
+      "category": "sql_count",
+      "question": "How many tickets were opened in the last 7 days?",
+      "expected_route": "sql",
+      "expected_count": 3,
+      "note": "created_at in [2026-05-25, 2026-06-01) -> i=0,1,2. Anchored to EVAL_TODAY=2026-06-01; the correct window requires the frozen evaluation clock.",
+      "difficulty": "hard"
+    },
+    {
+      "id": "sqlcount-recent30-08",
+      "category": "sql_count",
+      "question": "How many tickets were created in the last 30 days?",
+      "expected_route": "sql",
+      "expected_count": 7,
+      "note": "created_at in [2026-05-02, 2026-06-01) -> i=0-6. Anchored to EVAL_TODAY=2026-06-01; requires the frozen evaluation clock.",
+      "difficulty": "hard"
+    },
+    {
+      "id": "sqllist-open-09",
+      "category": "sql_list",
+      "question": "List the open tickets.",
+      "expected_route": "sql",
+      "expected_count": 4,
+      "must_mention": ["payment-service"],
+      "note": "action=list, status=open -> 4 rows (i=0,1,3,5), ordered by created_at DESC.",
+      "difficulty": "medium"
+    },
+    {
+      "id": "sqllist-p2-10",
+      "category": "sql_list",
+      "question": "Show me all the P2 tickets.",
+      "expected_route": "sql",
+      "expected_count": 4,
+      "must_mention": ["auth-service"],
+      "note": "action=list, priority=p2 -> 4 rows (i=2,3,6,8), ordered by created_at DESC.",
+      "difficulty": "medium"
+    },
+    {
+      "id": "clarify-vague-01",
+      "category": "clarify",
+      "question": "why is it broken?",
+      "expected_route": "clarify",
+      "difficulty": "easy"
+    },
+    {
+      "id": "clarify-help-02",
+      "category": "clarify",
+      "question": "I need help with an issue.",
+      "expected_route": "clarify",
+      "difficulty": "easy"
+    },
+    {
+      "id": "adversarial-nocontext-01",
+      "category": "adversarial",
+      "question": "What's our Kafka consumer lag runbook?",
+      "expected_route": "hybrid",
+      "expected_chunks": [],
+      "reference_answer": "There is no runbook for Kafka consumer lag in the knowledge base; the assistant should state that it lacks relevant documentation rather than inventing steps.",
+      "difficulty": "hard"
+    },
+    {
+      "id": "adversarial-servicename-02",
+      "category": "adversarial",
+      "question": "How many tickets does the payment service team handle?",
+      "expected_route": "sql",
+      "expected_count": 3,
+      "note": "Ground truth 3 (i=0,3,7). The spaced 'payment service' may not resolve to s.name='payment-service' (exact match) -> pipeline may return 0. That miss is the finding, not a bad case.",
+      "difficulty": "hard"
+    },
+    {
+      "id": "adversarial-wrongstore-03",
+      "category": "adversarial",
+      "question": "Show me the connection pool troubleshooting steps.",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "payment-db-pool-runbook", "chunk_index": 0, "content_sha256": "b0a62b725c6b6efe1d1a458ec02f816e0bab50bbd54f7a11ce0b9cd47093fdba"}
+      ],
+      "reference_answer": "The connection-pool troubleshooting steps: kill idle connections, restart the payment-service pods to reset the pools, and tune pool_size or consider PgBouncer if it recurs.",
+      "must_mention": ["pool"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "adversarial-paraphrase-04",
+      "category": "adversarial",
+      "question": "Our sign-in system keeps running out of RAM and getting killed. How do we stop it?",
+      "expected_route": "hybrid",
+      "expected_chunks": [
+        {"doc_key": "auth-service-memory-runbook", "chunk_index": 0, "content_sha256": "7c156cb70e602299ea4c39fdc0ccff2dd95ecbe9c35fb5875df7ec7261b08b6e"}
+      ],
+      "reference_answer": "The auth service is leaking memory and being OOMKilled: restart pods, raise the limit short-term, and fix the leak by evicting expired sessions/JWTs or moving the cache to Redis.",
+      "must_mention": ["memory"],
+      "difficulty": "hard"
+    }
+  ]
+}

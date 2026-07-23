@@ -1,0 +1,96 @@
+{
+  "payment-db-pool-runbook": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "b0a62b725c6b6efe1d1a458ec02f816e0bab50bbd54f7a11ce0b9cd47093fdba"
+    }
+  ],
+  "payment-db-pool-sizing-guide": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "02e353801a2536de873874233b61902baa5e96440df7861c1b69a0f7cb223594"
+    }
+  ],
+  "payment-db-faq": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "82790dfe61fbce92f3deaf331a3cf63843ac4917e56c7ae0d1b2bb55e2012af3"
+    }
+  ],
+  "api-gateway-rate-limit-runbook": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "833b69c344c4a83246bc3fb258e5a6a96ceb80bd7b10560dd6e12f325632f07d"
+    },
+    {
+      "chunk_index": 1,
+      "content_sha256": "44124afafd4151c6701aeb5649699b034646089b19ea949a99908e355b75397b"
+    }
+  ],
+  "api-gateway-rate-limit-tier-policy": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "a47b4cb6daef20c27518d7aaf33b21424d38d10a778e092cd566f0560f587c51"
+    }
+  ],
+  "api-gateway-rate-limit-faq": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "fa24641f4bf8294bc28bbdeb1147755123acdec9733d56a41cb2185bababd2e6"
+    }
+  ],
+  "auth-service-memory-runbook": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "7c156cb70e602299ea4c39fdc0ccff2dd95ecbe9c35fb5875df7ec7261b08b6e"
+    }
+  ],
+  "auth-memory-profiling-guide": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "87fce936bd0462dcee8b40ad693ce419b469e8ffa133db5479b44e4e3e9ac72e"
+    }
+  ],
+  "auth-resource-limits-policy": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "5b13626880edd6cb6e3d66ba38a25b91af391b0b6bd5e911ee44887cfef312de"
+    }
+  ],
+  "monitoring-disk-space-runbook": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "e0c57c4fd6fb95ade4771b237f99bf29030d7eb39d25440facfc1d80230526e8"
+    }
+  ],
+  "monitoring-log-rotation-faq": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "cdbebcf720d6bb75889911c6c3beb52b34b9c1edc03d38dfe5b021d987db39c5"
+    }
+  ],
+  "monitoring-log-retention-guide": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "4d5a56b19ae22e67b3522767b193d014586926b43caaa52ac9aed5fdc620cbbd"
+    }
+  ],
+  "vpn-cert-renewal-runbook": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "7284f974ff102737389f03d07eb963683dd79037dec6b1a92e650c3f75d4327c"
+    }
+  ],
+  "vpn-cert-renewal-policy": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "e45547ca530d52c899606bfe9880587f1a06d40389760f60efad04439291b42a"
+    }
+  ],
+  "vpn-access-faq": [
+    {
+      "chunk_index": 0,
+      "content_sha256": "48464583687ed57ce14928fcdb2cbfad3a0ad916e6f4c1b933c471d0a7888536"
+    }
+  ]
+}
