@@ -243,7 +243,7 @@
       "question": "How many tickets were opened in the last 7 days?",
       "expected_route": "sql",
       "expected_count": 3,
-      "note": "created_at in [2026-05-25, 2026-06-01) -> i=0,1,2. Anchored to EVAL_TODAY=2026-06-01; correct window requires the B0.2 clock hook. II-090 marquee.",
+      "note": "created_at in [2026-05-25, 2026-06-01) -> i=0,1,2. Anchored to EVAL_TODAY=2026-06-01; the correct window requires the frozen evaluation clock.",
       "difficulty": "hard"
     },
     {
@@ -252,7 +252,7 @@
       "question": "How many tickets were created in the last 30 days?",
       "expected_route": "sql",
       "expected_count": 7,
-      "note": "created_at in [2026-05-02, 2026-06-01) -> i=0-6. Anchored to EVAL_TODAY=2026-06-01; requires the B0.2 clock hook.",
+      "note": "created_at in [2026-05-02, 2026-06-01) -> i=0-6. Anchored to EVAL_TODAY=2026-06-01; requires the frozen evaluation clock.",
       "difficulty": "hard"
     },
     {
