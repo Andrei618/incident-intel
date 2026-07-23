@@ -3,7 +3,6 @@
 import json
 import time
 from collections.abc import AsyncIterator, Sequence
-from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -11,6 +10,7 @@ import tiktoken
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from incident_intel.core.clock import today_str
 from incident_intel.core.logging import get_logger
 from incident_intel.exceptions import ConversationNotFoundError
 from incident_intel.llm.openai_provider import OPENAI_MODEL_CHAT, OpenAIChatProvider
@@ -56,7 +56,7 @@ def _build_messages(
 
     if route == "sql":
         route_instruction = f"""
-Today's date is {datetime.now(UTC).strftime("%Y-%m-%d")}.
+Today's date is {today_str()}.
 The context is the authoritative result of a database query—report it directly as the answer,
 even if the number is 0.
 """

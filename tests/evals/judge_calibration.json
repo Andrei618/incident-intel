@@ -1,0 +1,78 @@
+{
+  "calibration_version": "1.0",
+  "note": "Validates the LLM judge, not the RAG pipeline. Each item is a hand-written answer with a human-assigned grade; run the judge on these and confirm it agrees before trusting it on the golden dataset. `question` is denormalized from golden_dataset.json via base_case for readability; base_case is the source of truth for the reference answer.",
+  "items": [
+    {
+      "id": "cal-pool-good",
+      "base_case": "hybrid-payment-pool-01",
+      "question": "payment service connection pool exhausted",
+      "answer": "Kill idle connections holding slots, restart the payment-service pods to reset the connection pools, and if it keeps happening increase pool_size or introduce PgBouncer.",
+      "expected_verdict": "pass",
+      "probes": "faithfulness+completeness",
+      "rationale": "Every step comes straight from the runbook's Resolution section; on-topic and complete. Sanity anchor - a judge that fails this is miscalibrated (too harsh)."
+    },
+    {
+      "id": "cal-pool-hallucination",
+      "base_case": "hybrid-payment-pool-01",
+      "question": "payment service connection pool exhausted",
+      "answer": "Scale the payments database up to a larger instance class and enable read replicas to spread the connection load across nodes.",
+      "expected_verdict": "fail",
+      "probes": "faithfulness",
+      "rationale": "Plausible-sounding but NOT in the runbook - invented remediation (no scaling or read-replica advice exists there). The judge must penalize ungrounded content."
+    },
+    {
+      "id": "cal-pool-offtopic",
+      "base_case": "hybrid-payment-pool-01",
+      "question": "payment service connection pool exhausted",
+      "answer": "Check the customer's API tier and correct the rate-limit configuration in the gateway configmap, then clear the stale Redis counters.",
+      "expected_verdict": "fail",
+      "probes": "relevance",
+      "rationale": "Coherent and even faithful to a DIFFERENT doc (the rate-limit runbook), but irrelevant to connection-pool exhaustion. Tests that the judge scores relevance, not just fluency."
+    },
+    {
+      "id": "cal-auth-good",
+      "base_case": "hybrid-auth-oom-07",
+      "question": "auth service pods OOMKilled",
+      "answer": "The pods are being OOMKilled by a memory leak: restart them to buy time, raise the memory limit short-term, and fix the leak by evicting expired sessions/JWTs or moving the session cache to Redis.",
+      "expected_verdict": "pass",
+      "probes": "faithfulness+completeness",
+      "rationale": "Faithful and complete per the runbook. Second pass anchor on a different topic - confirms the judge is not topic-sensitive."
+    },
+    {
+      "id": "cal-auth-incomplete",
+      "base_case": "hybrid-auth-oom-07",
+      "question": "auth service pods OOMKilled",
+      "answer": "Just restart the auth-service pods and they will come back up.",
+      "expected_verdict": "fail",
+      "probes": "completeness",
+      "rationale": "A valid immediate step, but omits the core guidance (raise the limit short-term, fix the memory leak). A restart alone does not resolve an OOM leak; the judge should mark this incomplete."
+    },
+    {
+      "id": "cal-kafka-refusal-good",
+      "base_case": "adversarial-nocontext-01",
+      "question": "What's our Kafka consumer lag runbook?",
+      "answer": "We don't have a runbook for Kafka consumer lag in the knowledge base, so I can't give you specific steps. You may want to check with the platform team.",
+      "expected_verdict": "pass",
+      "probes": "refusal-honesty",
+      "rationale": "Context is empty (no such doc). Honest refusal is the CORRECT behavior; the judge must reward it, not penalize the absence of a substantive answer."
+    },
+    {
+      "id": "cal-kafka-hallucination",
+      "base_case": "adversarial-nocontext-01",
+      "question": "What's our Kafka consumer lag runbook?",
+      "answer": "Check the consumer group offsets with kafka-consumer-groups.sh, increase max.poll.records, and scale up the consumer partitions to reduce lag.",
+      "expected_verdict": "fail",
+      "probes": "faithfulness-fabrication",
+      "rationale": "No Kafka doc exists, yet the answer invents detailed steps. This is the most dangerous failure - confident fabrication with zero grounding. A judge that passes this is unusable."
+    },
+    {
+      "id": "cal-vpn-wrongrefusal",
+      "base_case": "hybrid-vpn-cert-13",
+      "question": "VPN TLS handshake failed certificate expired",
+      "answer": "I'm sorry, I don't have any information about VPN connectivity problems.",
+      "expected_verdict": "fail",
+      "probes": "refusal-wrong-direction",
+      "rationale": "The cert-renewal runbook WAS retrieved and directly answers this. Refusing when relevant context exists is a failure; the judge must distinguish this from the correct Kafka refusal (cal-kafka-refusal-good)."
+    }
+  ]
+}
