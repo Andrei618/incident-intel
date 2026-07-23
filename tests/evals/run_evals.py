@@ -6,8 +6,9 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass
-from datetime import date
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
@@ -20,17 +21,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.evals import isolation  # isort: skip — must load first: sets env before incident_intel
 
-from incident_intel.llm.openai_provider import OpenAIChatProvider
+from incident_intel.llm.openai_provider import OPENAI_MODEL_CHAT, TEMPERATURE, OpenAIChatProvider
 from incident_intel.models.document import Document, DocumentChunk
 from incident_intel.services.chat_service import _build_messages
 from incident_intel.services.classification_service import classify_query
 from incident_intel.services.dispatch import dispatch
+from incident_intel.services.embedding_service import OPENAI_MODEL_EMBEDDING
 from incident_intel.services.sql_query_service import _count_phrase
 from tests.evals import fixture_data
 from tests.evals.metrics import precision_at_k, recall_at_k, reciprocal_rank_at_k
 
 DATASET_PATH = Path(__file__).parent / "golden_dataset.json"
 RETRIEVAL_K = 5  # must match dispatch(..., limit=5) — the retrieval cutoff
+EVAL_TEMPERATURE = 0.0
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "not-set")
 JUDGE_MODEL = os.getenv("OPENAI_MODEL_JUDGE", "gpt-4o")
 JUDGE_PASS = 4  # pass/fail threshold for judge calibration
@@ -64,6 +67,8 @@ unfaithful, and a faithful answer can still be irrelevant.
 - In your reasoning, give one or two sentences naming the specific claim or omission \
 behind each score.
 """
+REPORT_DIR = Path(__file__).parent / "reports"
+
 
 judge_client = openai.AsyncOpenAI(
     api_key=OPENAI_API_KEY,
@@ -199,6 +204,30 @@ class JudgeResult:
     faithfulness: int
     relevance: int
     reasoning: str
+
+
+@dataclass
+class Summary:
+    """Aggregated per-slice results of one eval run.
+
+    Routing is over all cases; every other slice carries its own n, because a
+    metric is None for the cases it does not apply to (see CaseScore).
+    """
+
+    routing_correct: int
+    routing_total: int
+    routing_diverged: int
+    retrieval_n: int
+    mean_recall: float | None
+    mean_precision: float | None
+    mean_mrr: float | None
+    sql_pass: int
+    sql_n: int
+    mentions_pass: int
+    mentions_n: int
+    judge_n: int
+    mean_faithfulness: float | None
+    mean_relevance: float | None
 
 
 def load_dataset(path: Path = DATASET_PATH) -> Dataset:
@@ -344,7 +373,7 @@ async def run_all(dataset: Dataset) -> tuple[list[CaseResult], dict[str, UUID]]:
     async with isolation.database.Session() as session:
         doc_ids = await resolve_doc_keys(session)
         await verify_chunk_hashes(session, dataset, doc_ids)
-        provider = OpenAIChatProvider(temperature=0.0)
+        provider = OpenAIChatProvider(temperature=EVAL_TEMPERATURE)
         results = []
         cases = dataset.cases
         n = len(cases)
@@ -378,7 +407,7 @@ async def judge_answer(
         model=JUDGE_MODEL,
         messages=messages,
         response_format=JudgeVerdict,
-        temperature=0.0,
+        temperature=EVAL_TEMPERATURE,
     )
     message = response.choices[0].message
     if message.refusal is not None or message.parsed is None:
@@ -454,6 +483,142 @@ def score_all(
     return scores
 
 
+def _mean(values: Iterable[float | None]) -> float | None:
+    """Compute mean of values list filtering None values."""
+    present = [v for v in values if v is not None]
+    return sum(present) / len(present) if present else None
+
+
+def _pass_rate(values: Iterable[bool | None]) -> tuple[int, int]:
+    """Count a boolean judgment: return (passes, n).
+
+    passes = how many are True; n = how many are not None (the cases the
+    judgment applies to — the slice's denominator).
+    """
+    present = [v for v in values if v is not None]
+    return sum(present), len(present)
+
+
+def aggregate(scores: list[CaseScore], judge_results: list[JudgeResult]) -> Summary:
+    """Compute per-slice (recall, SQL, judge) summary numbers for report."""
+    sql_pass, sql_n = _pass_rate(s.sql_ok for s in scores)
+    mentions_pass, mentions_n = _pass_rate(s.mentions_ok for s in scores)
+
+    return Summary(
+        routing_correct=sum(1 for s in scores if s.route_ok),
+        routing_total=len(scores),
+        routing_diverged=sum(1 for s in scores if s.route_diverged is True),
+        retrieval_n=sum(1 for s in scores if s.recall is not None),
+        mean_recall=_mean(s.recall for s in scores),
+        mean_precision=_mean(s.precision for s in scores),
+        mean_mrr=_mean(s.rr for s in scores),
+        sql_pass=sql_pass,
+        sql_n=sql_n,
+        mentions_pass=mentions_pass,
+        mentions_n=mentions_n,
+        judge_n=len(judge_results),
+        mean_faithfulness=_mean(j.faithfulness for j in judge_results),
+        mean_relevance=_mean(j.relevance for j in judge_results),
+    )
+
+
+def _fixture_hash() -> str:
+    manifest = (Path(__file__).parent / "fixture_manifest.json").read_bytes()
+    return hashlib.sha256(manifest).hexdigest()[:12]
+
+
+def _fmt(x: float | None) -> str:
+    """Format floats."""
+    return f"{x:.2f}" if x is not None else "n/a"
+
+
+def write_report(
+    dataset: Dataset,
+    scores: list[CaseScore],
+    judge_results: list[JudgeResult],
+    results: list[CaseResult],
+    agreed: int,
+    total: int,
+    summary: Summary,
+) -> None:
+    """Write report about evaluation in file."""
+    metadata = {
+        "run_date": datetime.now(UTC).isoformat(),
+        "chat_model": OPENAI_MODEL_CHAT,
+        "embedding_model": OPENAI_MODEL_EMBEDDING,
+        "judge_model": JUDGE_MODEL,
+        "eval_temperature": EVAL_TEMPERATURE,
+        "prod_temperature": TEMPERATURE,
+        "dataset_version": dataset.dataset_version,
+        "eval_today": dataset.eval_today.isoformat(),
+        "fixture_hash": _fixture_hash(),
+        "calibration": f"{agreed}/{total}",
+        "system_fingerprint": "not captured",
+    }
+    score_by_id = {s.case_id: s for s in scores}
+    judge_by_id = {j.case_id: j for j in judge_results}
+    cases = [
+        {
+            "result": asdict(r),
+            "score": asdict(score_by_id[r.case_id]),
+            "judge": asdict(judge_by_id[r.case_id]) if r.case_id in judge_by_id else None,
+        }
+        for r in results
+    ]
+
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # write json report
+    payload = {"metadata": metadata, "summary": asdict(summary), "cases": cases}
+    (REPORT_DIR / "results.json").write_text(json.dumps(payload, indent=2, default=str))
+
+    # write md report
+    s = summary
+    rows = [
+        (
+            "routing",
+            s.routing_total,
+            f"{s.routing_correct}/{s.routing_total} correct, {s.routing_diverged} diverged",
+        ),
+        ("recall@5", s.retrieval_n, _fmt(s.mean_recall)),
+        ("precision@5", s.retrieval_n, _fmt(s.mean_precision)),
+        ("MRR@5", s.retrieval_n, _fmt(s.mean_mrr)),
+        ("SQL correctness", s.sql_n, f"{s.sql_pass}/{s.sql_n}"),
+        ("must_mention", s.mentions_n, f"{s.mentions_pass}/{s.mentions_n}"),
+        ("judge faithfulness", s.judge_n, _fmt(s.mean_faithfulness)),
+        ("judge relevance", s.judge_n, _fmt(s.mean_relevance)),
+    ]
+    header = "| dimension | n | result |\n|---|---|---|"
+    body = "\n".join(f"| {dim} | {n} | {result} |" for dim, n, result in rows)
+    table = f"{header}\n{body}"
+
+    md = f"""# RAG Evaluation Report
+
+_Run {metadata["run_date"]}_ · dataset v{metadata["dataset_version"]} · eval_today {metadata["eval_today"]} · fixture `{metadata["fixture_hash"]}`
+
+Results are **repeatable-with-variance, not bit-reproducible**: temperature 0 reduces variance but OpenAI is not deterministic. Across runs, routing has ranged 30-31/31 and judge calibration 7-8/8 — read single-run numbers with that in mind.
+
+## Models
+
+| role | model | temperature |
+|---|---|---|
+| chat (system under test) | {metadata["chat_model"]} | {metadata["eval_temperature"]} (prod {metadata["prod_temperature"]}) |
+| embedding | {metadata["embedding_model"]} | — |
+| judge | {metadata["judge_model"]} | {metadata["eval_temperature"]} |
+
+Judge calibration this run: **{metadata["calibration"]}** agree with the human-graded set (advisory). `system_fingerprint`: {metadata["system_fingerprint"]}.
+
+## Results
+
+{table}
+
+_MRR carries rank jitter (score-only ordering); judge scores are advisory, per-dimension — never a single pass/fail._
+
+_See `ANALYSIS.md` for interpretation of these results._
+"""
+    (REPORT_DIR / "REPORT.md").write_text(md)
+
+
 def main() -> None:
     """Guard the environment, then run the evaluation."""
     isolation.guard()
@@ -473,7 +638,19 @@ def main() -> None:
     print(f"agreed: {agreed}/{total}, errored: {errored}")
 
     # judge golden dataset
-    asyncio.run(judge_all(dataset, results))
+    judge_results = asyncio.run(judge_all(dataset, results))
+
+    # write the report
+    summary = aggregate(scores, judge_results)
+    write_report(
+        dataset=dataset,
+        scores=scores,
+        judge_results=judge_results,
+        results=results,
+        agreed=agreed,
+        total=total,
+        summary=summary,
+    )
 
 
 if __name__ == "__main__":
